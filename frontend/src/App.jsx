@@ -9,6 +9,8 @@ import Reader from './pages/Reader'
 import Bookshelf from './pages/Bookshelf'
 import AuthPage from './pages/Auth'
 import Author from './pages/Author'
+import Profile from './pages/Profile'
+import Admin from './pages/Admin'
 
 /* 阅读页不显示站点导航（沉浸式） */
 function Layout() {
@@ -22,6 +24,8 @@ function Layout() {
         <Route path="/novel/:id" element={<NovelDetail />} />
         <Route path="/reader/:chapterId" element={<Reader />} />
         <Route path="/bookshelf" element={<RequireAuth><Bookshelf /></RequireAuth>} />
+        <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+        <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/author" element={<Author />} />

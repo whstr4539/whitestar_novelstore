@@ -91,3 +91,20 @@ async def like_comment(
     await db.execute(update(Comment).where(Comment.id == comment_id).values(likes=Comment.likes + 1))
     await db.commit()
     return Message(detail="点赞成功")
+
+
+@router.get("/comments/me", response_model=list[CommentOut], summary="我的评论")
+async def my_comments(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    comments = (
+        await db.scalars(
+            select(Comment)
+            .options(selectinload(Comment.user))
+            .where(Comment.user_id == user.id)
+            .order_by(Comment.created_at.desc())
+            .limit(50)
+        )
+    ).all()
+    return [CommentOut.model_validate(c) for c in comments]

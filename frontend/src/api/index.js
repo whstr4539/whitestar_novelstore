@@ -93,3 +93,31 @@ export const apiPublishChapter = (novelId, data) =>
 
 // ---------- 公告 ----------
 export const apiNotices = () => client.get('/notices').then((r) => r.data)
+
+// ---------- 用户公开主页 ----------
+export const apiUserProfile = (userId) =>
+  client.get(`/users/${userId}`).then((r) => r.data)
+
+// ---------- 我的评论 ----------
+export const apiMyComments = () => client.get('/comments/me').then((r) => r.data)
+
+// ---------- 管理后台 ----------
+export const apiAdminStats = () => client.get('/admin/stats').then((r) => r.data)
+
+export const apiAdminUsers = (params = {}) =>
+  client.get('/admin/users', { params }).then((r) => r.data)
+
+export const apiAdminSetUserStatus = (userId, status) =>
+  client.put(`/admin/users/${userId}/status`, { status }).then((r) => r.data)
+
+export const apiAdminNovels = (params = {}) =>
+  client.get('/admin/novels', { params }).then((r) => r.data)
+
+export const apiAdminSetNovelStatus = (novelId, status) =>
+  client.put(`/admin/novels/${novelId}/status`, { status }).then((r) => r.data)
+
+export const apiCreateNotice = (data) =>
+  client.post('/notices', data).then((r) => r.data)
+
+export const apiDeleteNotice = (noticeId) =>
+  client.delete(`/notices/${noticeId}`).then((r) => r.data)

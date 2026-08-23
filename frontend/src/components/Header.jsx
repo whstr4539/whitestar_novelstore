@@ -48,14 +48,17 @@ export default function Header() {
           {user ? (
             <>
               <Link to="/bookshelf" className="nav-link">书架</Link>
-              <span className="user-chip">
+              <Link to="/profile" className="user-chip" title="个人中心">
                 {user.nickname}
                 <span className="user-role">
                   {user.role === 'author' ? '作者' : user.role === 'admin' ? '管理' : ''}
                 </span>
-              </span>
+              </Link>
               {user.role === 'author' && (
                 <Link to="/author" className="nav-link">写作台</Link>
+              )}
+              {user.role === 'admin' && (
+                <Link to="/admin" className="nav-link">管理台</Link>
               )}
               <button className="nav-link logout" onClick={() => { logout(); navigate('/') }}>
                 退出
@@ -135,6 +138,14 @@ export default function Header() {
           font-size: var(--fs-14);
           color: var(--ink-900);
           white-space: nowrap;
+          padding: 5px 10px;
+          border-radius: 16px;
+          border: 1px solid var(--hairline);
+          transition: border-color var(--ease), color var(--ease);
+        }
+        .user-chip:hover {
+          border-color: var(--accent);
+          color: var(--accent);
         }
         .user-role {
           font-size: var(--fs-12);
