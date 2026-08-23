@@ -4,6 +4,9 @@
 *.env
 !.env.example
 
+# pi 工具本地配置（agent skills 等）
+.pi/
+
 # 数据库备份
 db/backup/*.sql
 
