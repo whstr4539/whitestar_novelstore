@@ -112,7 +112,7 @@ export default function Reader() {
         <button className="bar-btn" onClick={(e) => { e.stopPropagation(); navigate(-1) }}>←</button>
         <span className="bar-title">{chapter?.title || '…'}</span>
         <button className="bar-btn" onClick={(e) => { e.stopPropagation(); toggleNight() }}>
-          {night ? '☀' : '☾'}
+          {night ? '日间' : '夜间'}
         </button>
       </header>
 
@@ -127,7 +127,7 @@ export default function Reader() {
           </div>
         ) : blocked ? (
           <div className="reader-lock">
-            <div className="lock-icon">🔒</div>
+            <span className="badge badge-vip lock-badge">VIP 章节</span>
             <h2 className="lock-title">{chapter?.title}</h2>
             <p className="lock-price">
               本章为 VIP 章节，需 {chapter ? Number(chapter.price) : '—'} 书币购买
@@ -309,7 +309,7 @@ export default function Reader() {
           border: 1px solid var(--reader-hairline);
           border-radius: var(--radius-lg);
         }
-        .lock-icon { font-size: 40px; margin-bottom: var(--space-4); }
+        .lock-badge { margin-bottom: var(--space-4); }
         .lock-title { font-size: var(--fs-18); margin-bottom: var(--space-2); font-weight: 600; }
         .lock-price { font-size: var(--fs-14); opacity: 0.7; margin-bottom: var(--space-5); }
         .lock-note { font-size: var(--fs-12); opacity: 0.5; margin-top: var(--space-3); }

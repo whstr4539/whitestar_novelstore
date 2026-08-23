@@ -10,7 +10,7 @@ export default function ChapterList({ chapters, novelId }) {
             <span className="clist-side">
               {payable ? (
                 <>
-                  <span className="badge badge-vip">🔒 {Number(c.price)}书币</span>
+                  <span className="badge badge-vip">VIP {Number(c.price)}书币</span>
                 </>
               ) : (
                 <span className="badge badge-free">免费</span>

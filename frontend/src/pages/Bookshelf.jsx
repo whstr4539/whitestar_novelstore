@@ -1,10 +1,12 @@
 /* 书架：收藏 + 阅读历史 两个 Tab */
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { apiBookshelf, apiHistory, apiRemoveFavorite } from '../api'
 import NovelCard from '../components/NovelCard'
 
 export default function Bookshelf() {
-  const [tab, setTab] = useState('shelf')
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState(params.get('tab') === 'history' ? 'history' : 'shelf')
   const [shelf, setShelf] = useState([])
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
@@ -16,7 +18,7 @@ export default function Bookshelf() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [])
+  useEffect(() => { load() }, [])
 
   const remove = async (id) => {
     await apiRemoveFavorite(id)

@@ -32,7 +32,7 @@ export default function Author() {
   ]
 
   const load = () => apiMyNovels().then(setNovels).catch(() => {})
-  useEffect(load, [])
+  useEffect(() => { load() }, [])
 
   const flash = (m, isErr = false) => { setMsg({ text: m, isErr }); setTimeout(() => setMsg(''), 3500) }
 

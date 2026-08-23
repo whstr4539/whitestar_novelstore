@@ -1,6 +1,7 @@
-/* 个人中心：资料卡 | 钱包充值 | 数据统计 | 角色入口 */
+/* 个人中心：克制简约 —— 单卡片 + hairline 分区
+   设计依据 novel-reading-ui skill：无 emoji、无花哨图标、文字信息优先 */
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   apiBookshelf, apiHistory, apiMyComments, apiMyNovels, apiRecharge, apiWallet,
 } from '../api'
@@ -20,7 +21,6 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
 
-  // 充值
   const [amount, setAmount] = useState(RECHARGE_OPTIONS[1])
   const [rechargeBusy, setRechargeBusy] = useState(false)
 
@@ -38,13 +38,13 @@ export default function Profile() {
     }).finally(() => setLoading(false))
   }
 
-  useEffect(load, [user])
+  useEffect(() => { load() }, [user])
 
   const doRecharge = async () => {
     setRechargeBusy(true)
     try {
       const d = await apiRecharge(amount)
-      setMsg(`充值成功：到账 ${d.coins} 书币（余额 ${d.balance_after}）`)
+      setMsg(`充值成功：到账 ${d.coins} 书币，当前余额 ${d.balance_after}`)
       setWallet(await apiWallet())
     } catch (e) {
       setMsg(e.response?.data?.detail || '充值失败')
@@ -58,42 +58,48 @@ export default function Profile() {
 
   const roleLabel = user.role === 'admin' ? '管理员' : user.role === 'author' ? '签约作者' : '读者'
 
+  const entries = [
+    { label: '我的书架', sub: `${shelfCount} 本收藏`, to: '/bookshelf' },
+    { label: '阅读历史', sub: `${historyCount} 本在读`, to: '/bookshelf?tab=history' },
+    ...(user.role === 'author' ? [{ label: '写作台', sub: `${myNovels.length} 部作品`, to: '/author' }] : []),
+    ...(user.role === 'admin' ? [{ label: '管理后台', sub: '用户 · 作品 · 公告 · 统计', to: '/admin' }] : []),
+  ]
+
   return (
     <div className="container profile page-enter">
       <div className="page-head">
         <h1 className="page-title">个人中心</h1>
-        <span className="page-sub">@ {user.username}</span>
+        <span className="page-sub">@{user.username}</span>
       </div>
 
       {msg && <div className="alert alert-success">{msg}</div>}
 
-      {/* 资料卡 + 钱包 */}
-      <div className="profile-grid">
-        <section className="p-card p-user">
+      <div className="p-card">
+        {/* 资料区 */}
+        <section className="p-sec p-user">
           <div className="p-avatar">{user.nickname?.[0] || '书'}</div>
           <div className="p-user-info">
-            <h2 className="p-nickname">{user.nickname}</h2>
-            <p className="p-username">@{user.username}</p>
-            <p className="p-meta">
+            <div className="p-name-row">
+              <h2 className="p-nickname">{user.nickname}</h2>
               <span className={`badge ${user.role === 'admin' ? 'badge-vip' : user.role === 'author' ? 'badge-finished' : 'badge-serializing'}`}>
                 {roleLabel}
               </span>
-              <span className="p-joined">加入于 {user.created_at?.slice(0, 10)}</span>
-            </p>
-            {user.email && <p className="p-email">📧 {user.email}</p>}
+            </div>
+            <p className="p-sub">@{user.username} · 加入于 {user.created_at?.slice(0, 10)}</p>
+            {user.email && <p className="p-sub">{user.email}</p>}
           </div>
         </section>
 
-        <section className="p-card p-wallet">
+        {/* 钱包区 */}
+        <section className="p-sec p-wallet">
           <div className="p-wallet-head">
-            <h3 className="p-card-title">书币钱包</h3>
-            <Link to="/bookshelf" className="p-link">我的书架 →</Link>
+            <span className="p-sec-title">书币钱包</span>
+            <span className="p-wallet-total">累计充值 {wallet ? Number(wallet.total_recharged) : '—'} 书币</span>
           </div>
           <div className="p-balance">
             <span className="p-balance-num">{wallet ? Number(wallet.balance) : '—'}</span>
             <span className="p-balance-unit">书币</span>
           </div>
-          <p className="p-wallet-sub">累计充值 {wallet ? Number(wallet.total_recharged) : '—'} 书币 · 1元 = 10书币</p>
           <div className="p-recharge">
             {RECHARGE_OPTIONS.map((v) => (
               <button key={v}
@@ -105,67 +111,53 @@ export default function Profile() {
             <button className="btn btn-primary" onClick={doRecharge} disabled={rechargeBusy}>
               {rechargeBusy ? '处理中…' : '充值'}
             </button>
+            <span className="p-hint">1 元 = 10 书币</span>
           </div>
+        </section>
+
+        {/* 统计区 */}
+        <section className="p-sec p-stats">
+          <div className="p-stat"><b>{shelfCount}</b><span>收藏</span></div>
+          <div className="p-stat"><b>{historyCount}</b><span>在读</span></div>
+          <div className="p-stat"><b>{commentCount}</b><span>评论</span></div>
+          {user.role === 'author' && <div className="p-stat"><b>{myNovels.length}</b><span>作品</span></div>}
+        </section>
+
+        {/* 入口区 */}
+        <section className="p-entries">
+          {entries.map((e) => (
+            <button key={e.label} className="p-entry" onClick={() => navigate(e.to)}>
+              <div className="p-entry-text">
+                <span className="p-entry-label">{e.label}</span>
+                <span className="p-entry-sub">{e.sub}</span>
+              </div>
+              <span className="p-entry-arrow">→</span>
+            </button>
+          ))}
         </section>
       </div>
 
-      {/* 数据统计 */}
-      <section className="p-card p-stats">
-        <div className="p-stat">
-          <b>{shelfCount}</b><span>收藏</span>
-        </div>
-        <div className="p-stat">
-          <b>{historyCount}</b><span>在读</span>
-        </div>
-        <div className="p-stat">
-          <b>{commentCount}</b><span>评论</span>
-        </div>
-        {user.role === 'author' && (
-          <div className="p-stat">
-            <b>{myNovels.length}</b><span>作品</span>
-          </div>
-        )}
-      </section>
-
-      {/* 角色入口 */}
-      <section className="p-card p-entries">
-        <button className="p-entry" onClick={() => navigate('/bookshelf')}>
-          <span className="p-entry-icon">📚</span>
-          <div><h4>我的书架</h4><p>收藏与阅读历史</p></div>
-          <span className="p-entry-arrow">→</span>
-        </button>
-        {user.role === 'author' && (
-          <button className="p-entry" onClick={() => navigate('/author')}>
-            <span className="p-entry-icon">✍️</span>
-            <div><h4>写作台</h4><p>管理作品 · 发布章节</p></div>
-            <span className="p-entry-arrow">→</span>
-          </button>
-        )}
-        {user.role === 'admin' && (
-          <button className="p-entry" onClick={() => navigate('/admin')}>
-            <span className="p-entry-icon">🛠</span>
-            <div><h4>管理后台</h4><p>用户 · 作品 · 公告 · 平台统计</p></div>
-            <span className="p-entry-arrow">→</span>
-          </button>
-        )}
-      </section>
-
       <style>{`
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: var(--space-4);
-        }
+        /* 单卡片布局 */
         .p-card {
+          max-width: 640px;
           background: var(--card);
           border: 1px solid var(--hairline);
           border-radius: var(--radius-lg);
-          padding: var(--space-5);
-          margin-bottom: var(--space-4);
+          overflow: hidden;
+          margin-bottom: var(--space-8);
         }
-        .p-user { display: flex; gap: var(--space-5); align-items: flex-start; }
+        /* hairline 分区 */
+        .p-sec {
+          padding: var(--space-5) var(--space-6);
+          border-bottom: 1px solid var(--hairline);
+        }
+        .p-sec:last-child { border-bottom: none; }
+
+        /* 资料区 */
+        .p-user { display: flex; gap: var(--space-5); align-items: center; }
         .p-avatar {
-          width: 64px; height: 64px;
+          width: 56px; height: 56px;
           border-radius: 50%;
           background: var(--accent);
           color: #fff;
@@ -174,46 +166,71 @@ export default function Profile() {
           display: flex; align-items: center; justify-content: center;
           flex-shrink: 0;
         }
-        .p-nickname { font-size: var(--fs-22); font-weight: 600; margin-bottom: 2px; }
-        .p-username { font-size: var(--fs-14); color: var(--ink-500); margin-bottom: var(--space-2); }
-        .p-meta { display: flex; align-items: center; gap: var(--space-3); margin-bottom: 4px; }
-        .p-joined { font-size: var(--fs-12); color: var(--ink-300); }
-        .p-email { font-size: var(--fs-13); color: var(--ink-500); margin-top: 4px; }
+        .p-name-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: 4px; }
+        .p-nickname { font-size: var(--fs-22); font-weight: 600; }
+        .p-sub { font-size: var(--fs-13); color: var(--ink-500); margin-top: 2px; }
 
-        .p-wallet-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-3); }
-        .p-card-title { font-size: var(--fs-16); font-weight: 600; }
-        .p-link { font-size: var(--fs-13); color: var(--accent); }
-        .p-balance { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
-        .p-balance-num { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-900); }
-        .p-balance-unit { font-size: var(--fs-14); color: var(--ink-500); }
-        .p-wallet-sub { font-size: var(--fs-12); color: var(--ink-300); margin-bottom: var(--space-4); }
+        /* 钱包区 */
+        .p-wallet-head {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          margin-bottom: var(--space-3);
+        }
+        .p-sec-title { font-size: var(--fs-15); font-weight: 600; color: var(--ink-900); }
+        .p-wallet-total { font-size: var(--fs-12); color: var(--ink-300); }
+        .p-balance { display: flex; align-items: baseline; gap: 8px; margin-bottom: var(--space-4); }
+        .p-balance-num {
+          font-size: 36px;
+          font-weight: 700;
+          font-variant-numeric: tabular-nums;
+          letter-spacing: -0.02em;
+        }
+        .p-balance-unit { font-size: var(--fs-13); color: var(--ink-500); }
         .p-recharge { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
-        .p-amount { padding: 6px 14px; font-size: var(--fs-13); }
-        .p-amount-on { border-color: var(--accent) !important; color: var(--accent) !important; background: var(--accent-weak) !important; }
+        .p-amount { padding: 6px 16px; font-size: var(--fs-13); font-variant-numeric: tabular-nums; }
+        .p-amount-on {
+          border-color: var(--accent) !important;
+          color: var(--accent) !important;
+          background: var(--accent-weak) !important;
+        }
+        .p-hint { font-size: var(--fs-12); color: var(--ink-300); margin-left: var(--space-2); }
 
-        .p-stats { display: flex; gap: var(--space-7); }
+        /* 统计区 */
+        .p-stats { display: flex; gap: var(--space-7); padding: var(--space-4) var(--space-6); }
         .p-stat { text-align: center; }
-        .p-stat b { display: block; font-size: var(--fs-22); font-variant-numeric: tabular-nums; }
+        .p-stat b {
+          display: block;
+          font-size: var(--fs-20);
+          font-variant-numeric: tabular-nums;
+          color: var(--ink-900);
+        }
         .p-stat span { font-size: var(--fs-12); color: var(--ink-500); }
 
-        .p-entries { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+        /* 入口区：纯文字列表行 */
+        .p-entries { padding: 0; }
         .p-entry {
-          display: flex; align-items: center; gap: var(--space-4);
-          padding: var(--space-4) var(--space-5);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          padding: var(--space-4) var(--space-6);
           border-bottom: 1px solid var(--hairline);
           text-align: left;
           transition: background var(--ease);
         }
         .p-entry:last-child { border-bottom: none; }
         .p-entry:hover { background: #f6f5f1; }
-        .p-entry-icon { font-size: 22px; }
-        .p-entry h4 { font-size: var(--fs-15); margin-bottom: 2px; }
-        .p-entry p { font-size: var(--fs-12); color: var(--ink-500); }
-        .p-entry-arrow { margin-left: auto; color: var(--ink-300); }
+        .p-entry-text { display: flex; flex-direction: column; gap: 2px; }
+        .p-entry-label { font-size: var(--fs-15); color: var(--ink-900); }
+        .p-entry-sub { font-size: var(--fs-12); color: var(--ink-500); }
+        .p-entry-arrow { color: var(--ink-300); font-size: var(--fs-14); transition: transform var(--ease); }
+        .p-entry:hover .p-entry-arrow { transform: translateX(3px); color: var(--accent); }
 
         @media (max-width: 768px) {
-          .profile-grid { grid-template-columns: 1fr; }
-          .p-stats { gap: var(--space-5); }
+          .p-sec { padding: var(--space-4); }
+          .p-stats { padding: var(--space-3) var(--space-4); gap: var(--space-5); }
+          .p-entry { padding: var(--space-3) var(--space-4); }
         }
       `}</style>
     </div>
