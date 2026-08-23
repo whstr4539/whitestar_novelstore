@@ -1,0 +1,112 @@
+# ============================================================
+# 网文书城（起点/番茄模式）课设 —— 基础设施编排
+# PostgreSQL 16 + Redis 7 + pgAdmin 4
+# 用法：docker compose up -d
+# ============================================================
+
+name: novel-bookstore
+
+services:
+  # ---------- 主数据库：PostgreSQL 16 ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: novel-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-novel_db}
+      POSTGRES_USER: ${POSTGRES_USER:-novel_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novel_pass_2024}
+      # 时区
+      TZ: Asia/Shanghai
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data          # 数据持久化
+      - ./db/init:/docker-entrypoint-initdb.d:ro  # 首次启动自动执行建表+种子数据脚本
+      - ./db/backup:/backup                       # 备份目录（挂载宿主机）
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-novel_user} -d ${POSTGRES_DB:-novel_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - novel-net
+
+  # ---------- 缓存：Redis 7 ----------
+  redis:
+    image: redis:7-alpine
+    container_name: novel-redis
+    restart: unless-stopped
+    command: >
+      sh -c 'redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_pass_2024}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_pass_2024}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - novel-net
+
+  # ---------- 可视化工具：pgAdmin 4（可选，浏览器访问 http://localhost:5050） ----------
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: novel-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@novel.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin_pass_2024}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin   # 持久化服务器注册配置
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - novel-net
+
+  # ---------- 后端：FastAPI（代码就绪后启用，取消注释即可） ----------
+  # backend:
+  #   build: ./backend
+  #   container_name: novel-backend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  #     REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - novel-net
+
+  # ---------- 前端：React（代码就绪后启用） ----------
+  # frontend:
+  #   build: ./frontend
+  #   container_name: novel-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:80"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - novel-net
+
+volumes:
+  pgdata:
+  redisdata:
+  pgadmin_data:
+
+networks:
+  novel-net:
+    driver: bridge

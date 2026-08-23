@@ -1,0 +1,31 @@
+# ===== 环境与敏感信息（绝不提交）=====
+# 数据库/Redis/密钥等本地配置
+.env
+*.env
+!.env.example
+
+# 数据库备份
+db/backup/*.sql
+
+# ===== Python =====
+__pycache__/
+*.pyc
+.venv/
+venv/
+backend/.venv/
+
+# ===== Node =====
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# ===== IDE / 系统 =====
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+.DS_Store
+
+# ===== 日志 =====
+*.log
+logs/
