@@ -98,6 +98,9 @@ export const apiNotices = () => client.get('/notices').then((r) => r.data)
 export const apiUserProfile = (userId) =>
   client.get(`/users/${userId}`).then((r) => r.data)
 
+export const apiUpdateProfile = (data) =>
+  client.put('/users/me', data).then((r) => r.data)
+
 // ---------- 我的评论 ----------
 export const apiMyComments = () => client.get('/comments/me').then((r) => r.data)
 

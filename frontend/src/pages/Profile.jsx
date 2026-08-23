@@ -1,28 +1,36 @@
-/* 个人中心：克制简约 —— 单卡片 + hairline 分区
-   设计依据 novel-reading-ui skill：无 emoji、无花哨图标、文字信息优先 */
+/* 个人中心：资料编辑 | 可点击统计（收藏/在读/评论）| 评论历史 | 角色入口
+   设计依据 novel-reading-ui skill：单卡片、hairline 分区、无 emoji */
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  apiBookshelf, apiHistory, apiMyComments, apiMyNovels, apiRecharge, apiWallet,
+  apiBookshelf, apiHistory, apiMyComments, apiMyNovels, apiRecharge, apiUpdateProfile, apiWallet,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
 
 const RECHARGE_OPTIONS = [6, 30, 50, 100] // 元，汇率 1元=10书币
 
 export default function Profile() {
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const navigate = useNavigate()
 
   const [wallet, setWallet] = useState(null)
   const [shelfCount, setShelfCount] = useState(0)
   const [historyCount, setHistoryCount] = useState(0)
-  const [commentCount, setCommentCount] = useState(0)
+  const [myComments, setMyComments] = useState([])
   const [myNovels, setMyNovels] = useState([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
 
   const [amount, setAmount] = useState(RECHARGE_OPTIONS[1])
   const [rechargeBusy, setRechargeBusy] = useState(false)
+
+  // 评论历史展开
+  const [showComments, setShowComments] = useState(false)
+
+  // 编辑资料
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState({ nickname: '', email: '' })
+  const [saveBusy, setSaveBusy] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -34,23 +42,50 @@ export default function Profile() {
       user?.role === 'author' ? apiMyNovels().catch(() => []) : Promise.resolve([]),
     ]).then(([w, s, h, c, n]) => {
       setWallet(w); setShelfCount(s.items.length); setHistoryCount(h.items.length)
-      setCommentCount(c.length); setMyNovels(n)
+      setMyComments(c); setMyNovels(n)
     }).finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [user])
 
+  const flash = (m, isErr = false) => {
+    setMsg({ text: m, isErr })
+    setTimeout(() => setMsg(''), 3000)
+  }
+
   const doRecharge = async () => {
     setRechargeBusy(true)
     try {
       const d = await apiRecharge(amount)
-      setMsg(`充值成功：到账 ${d.coins} 书币，当前余额 ${d.balance_after}`)
+      flash(`充值成功：到账 ${d.coins} 书币，当前余额 ${d.balance_after}`)
       setWallet(await apiWallet())
     } catch (e) {
-      setMsg(e.response?.data?.detail || '充值失败')
+      flash(e.response?.data?.detail || '充值失败', true)
     } finally {
       setRechargeBusy(false)
-      setTimeout(() => setMsg(''), 3000)
+    }
+  }
+
+  const startEdit = () => {
+    setEditForm({ nickname: user.nickname, email: user.email || '' })
+    setEditing(true)
+  }
+
+  const saveProfile = async () => {
+    if (!editForm.nickname.trim()) { flash('昵称不能为空', true); return }
+    setSaveBusy(true)
+    try {
+      const u = await apiUpdateProfile({
+        nickname: editForm.nickname.trim(),
+        email: editForm.email.trim() || null,
+      })
+      updateUser(u)
+      setEditing(false)
+      flash('资料已保存')
+    } catch (e) {
+      flash(e.response?.data?.detail || '保存失败', true)
+    } finally {
+      setSaveBusy(false)
     }
   }
 
@@ -59,8 +94,6 @@ export default function Profile() {
   const roleLabel = user.role === 'admin' ? '管理员' : user.role === 'author' ? '签约作者' : '读者'
 
   const entries = [
-    { label: '我的书架', sub: `${shelfCount} 本收藏`, to: '/bookshelf' },
-    { label: '阅读历史', sub: `${historyCount} 本在读`, to: '/bookshelf?tab=history' },
     ...(user.role === 'author' ? [{ label: '写作台', sub: `${myNovels.length} 部作品`, to: '/author' }] : []),
     ...(user.role === 'admin' ? [{ label: '管理后台', sub: '用户 · 作品 · 公告 · 统计', to: '/admin' }] : []),
   ]
@@ -72,21 +105,46 @@ export default function Profile() {
         <span className="page-sub">@{user.username}</span>
       </div>
 
-      {msg && <div className="alert alert-success">{msg}</div>}
+      {msg && <div className={`alert ${msg.isErr ? 'alert-error' : 'alert-success'}`}>{msg.text}</div>}
 
       <div className="p-card">
         {/* 资料区 */}
         <section className="p-sec p-user">
           <div className="p-avatar">{user.nickname?.[0] || '书'}</div>
           <div className="p-user-info">
-            <div className="p-name-row">
-              <h2 className="p-nickname">{user.nickname}</h2>
-              <span className={`badge ${user.role === 'admin' ? 'badge-vip' : user.role === 'author' ? 'badge-finished' : 'badge-serializing'}`}>
-                {roleLabel}
-              </span>
-            </div>
-            <p className="p-sub">@{user.username} · 加入于 {user.created_at?.slice(0, 10)}</p>
-            {user.email && <p className="p-sub">{user.email}</p>}
+            {editing ? (
+              <div className="p-edit">
+                <div className="p-edit-row">
+                  <label className="label p-edit-label">昵称</label>
+                  <input className="field" value={editForm.nickname}
+                    onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })} />
+                </div>
+                <div className="p-edit-row">
+                  <label className="label p-edit-label">邮箱</label>
+                  <input className="field" type="email" placeholder="选填"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+                </div>
+                <div className="p-edit-actions">
+                  <button className="btn btn-primary" disabled={saveBusy} onClick={saveProfile}>
+                    {saveBusy ? '保存中…' : '保存'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => setEditing(false)}>取消</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="p-name-row">
+                  <h2 className="p-nickname">{user.nickname}</h2>
+                  <span className={`badge ${user.role === 'admin' ? 'badge-vip' : user.role === 'author' ? 'badge-finished' : 'badge-serializing'}`}>
+                    {roleLabel}
+                  </span>
+                  <button className="p-edit-btn" onClick={startEdit}>编辑</button>
+                </div>
+                <p className="p-sub">@{user.username} · 加入于 {user.created_at?.slice(0, 10)}</p>
+                {user.email && <p className="p-sub">{user.email}</p>}
+              </>
+            )}
           </div>
         </section>
 
@@ -115,26 +173,59 @@ export default function Profile() {
           </div>
         </section>
 
-        {/* 统计区 */}
+        {/* 统计区：可点击跳转 */}
         <section className="p-sec p-stats">
-          <div className="p-stat"><b>{shelfCount}</b><span>收藏</span></div>
-          <div className="p-stat"><b>{historyCount}</b><span>在读</span></div>
-          <div className="p-stat"><b>{commentCount}</b><span>评论</span></div>
-          {user.role === 'author' && <div className="p-stat"><b>{myNovels.length}</b><span>作品</span></div>}
+          <button className="p-stat" onClick={() => navigate('/bookshelf')} title="查看我的书架">
+            <b>{shelfCount}</b><span>收藏</span>
+          </button>
+          <button className="p-stat" onClick={() => navigate('/bookshelf?tab=history')} title="查看阅读历史">
+            <b>{historyCount}</b><span>在读</span>
+          </button>
+          <button className={`p-stat ${showComments ? 'p-stat-on' : ''}`}
+            onClick={() => setShowComments(!showComments)} title="查看我的评论">
+            <b>{myComments.length}</b><span>评论</span>
+          </button>
+          {user.role === 'author' && (
+            <button className="p-stat" onClick={() => navigate('/author')} title="进入写作台">
+              <b>{myNovels.length}</b><span>作品</span>
+            </button>
+          )}
         </section>
 
-        {/* 入口区 */}
-        <section className="p-entries">
-          {entries.map((e) => (
-            <button key={e.label} className="p-entry" onClick={() => navigate(e.to)}>
-              <div className="p-entry-text">
-                <span className="p-entry-label">{e.label}</span>
-                <span className="p-entry-sub">{e.sub}</span>
-              </div>
-              <span className="p-entry-arrow">→</span>
-            </button>
-          ))}
-        </section>
+        {/* 评论历史（点击"评论"展开） */}
+        {showComments && (
+          <section className="p-comments">
+            {myComments.length === 0 ? (
+              <div className="empty">还没有发表过评论</div>
+            ) : (
+              myComments.map((c) => (
+                <a key={c.id} className="p-comment" href={`/novel/${c.novel_id}`}>
+                  <div className="p-comment-head">
+                    <span className="p-comment-novel">{c.novel_title}</span>
+                    {c.chapter_title && <span className="p-comment-chapter">{c.chapter_title}</span>}
+                    <span className="p-comment-time">{new Date(c.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <p className="p-comment-content">{c.content}</p>
+                </a>
+              ))
+            )}
+          </section>
+        )}
+
+        {/* 角色入口 */}
+        {entries.length > 0 && (
+          <section className="p-entries">
+            {entries.map((e) => (
+              <button key={e.label} className="p-entry" onClick={() => navigate(e.to)}>
+                <div className="p-entry-text">
+                  <span className="p-entry-label">{e.label}</span>
+                  <span className="p-entry-sub">{e.sub}</span>
+                </div>
+                <span className="p-entry-arrow">→</span>
+              </button>
+            ))}
+          </section>
+        )}
       </div>
 
       <style>{`
@@ -147,7 +238,6 @@ export default function Profile() {
           overflow: hidden;
           margin-bottom: var(--space-8);
         }
-        /* hairline 分区 */
         .p-sec {
           padding: var(--space-5) var(--space-6);
           border-bottom: 1px solid var(--hairline);
@@ -169,6 +259,21 @@ export default function Profile() {
         .p-name-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: 4px; }
         .p-nickname { font-size: var(--fs-22); font-weight: 600; }
         .p-sub { font-size: var(--fs-13); color: var(--ink-500); margin-top: 2px; }
+        .p-edit-btn {
+          font-size: var(--fs-12);
+          color: var(--ink-500);
+          border: 1px solid var(--hairline);
+          border-radius: 12px;
+          padding: 2px 10px;
+          transition: border-color var(--ease), color var(--ease);
+        }
+        .p-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* 编辑表单 */
+        .p-edit { display: flex; flex-direction: column; gap: var(--space-3); width: 100%; max-width: 360px; }
+        .p-edit-row { display: flex; align-items: center; gap: var(--space-3); }
+        .p-edit-label { margin: 0; width: 40px; flex-shrink: 0; }
+        .p-edit-actions { display: flex; gap: var(--space-2); }
 
         /* 钱包区 */
         .p-wallet-head {
@@ -196,9 +301,15 @@ export default function Profile() {
         }
         .p-hint { font-size: var(--fs-12); color: var(--ink-300); margin-left: var(--space-2); }
 
-        /* 统计区 */
+        /* 统计区：整体可点击 */
         .p-stats { display: flex; gap: var(--space-7); padding: var(--space-4) var(--space-6); }
-        .p-stat { text-align: center; }
+        .p-stat {
+          text-align: center;
+          padding: var(--space-2) var(--space-3);
+          border-radius: var(--radius);
+          transition: background var(--ease);
+        }
+        .p-stat:hover { background: #f0efea; }
         .p-stat b {
           display: block;
           font-size: var(--fs-20);
@@ -206,6 +317,32 @@ export default function Profile() {
           color: var(--ink-900);
         }
         .p-stat span { font-size: var(--fs-12); color: var(--ink-500); }
+        .p-stat-on { background: var(--accent-weak); }
+        .p-stat-on span { color: var(--accent-text); }
+
+        /* 评论历史 */
+        .p-comments { border-bottom: 1px solid var(--hairline); }
+        .p-comment {
+          display: block;
+          padding: var(--space-4) var(--space-6);
+          border-bottom: 1px solid var(--hairline);
+          transition: background var(--ease);
+        }
+        .p-comment:last-child { border-bottom: none; }
+        .p-comment:hover { background: #f6f5f1; }
+        .p-comment-head { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: 4px; }
+        .p-comment-novel { font-size: var(--fs-13); font-weight: 600; color: var(--accent-text); }
+        .p-comment-chapter { font-size: var(--fs-12); color: var(--ink-500); }
+        .p-comment-time { font-size: var(--fs-12); color: var(--ink-300); margin-left: auto; }
+        .p-comment-content {
+          font-size: var(--fs-14);
+          color: var(--ink-700);
+          line-height: 1.7;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
 
         /* 入口区：纯文字列表行 */
         .p-entries { padding: 0; }
@@ -231,6 +368,7 @@ export default function Profile() {
           .p-sec { padding: var(--space-4); }
           .p-stats { padding: var(--space-3) var(--space-4); gap: var(--space-5); }
           .p-entry { padding: var(--space-3) var(--space-4); }
+          .p-comment { padding: var(--space-3) var(--space-4); }
         }
       `}</style>
     </div>

@@ -93,18 +93,27 @@ async def like_comment(
     return Message(detail="点赞成功")
 
 
-@router.get("/comments/me", response_model=list[CommentOut], summary="我的评论")
+@router.get("/comments/me", response_model=list[CommentOut], summary="我的评论（含作品/章节标题）")
 async def my_comments(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    comments = (
-        await db.scalars(
-            select(Comment)
-            .options(selectinload(Comment.user))
+    from app.models import Chapter, Novel
+
+    rows = (
+        await db.execute(
+            select(Comment, Novel.title, Chapter.title)
+            .join(Novel, Novel.id == Comment.novel_id)
+            .outerjoin(Chapter, Chapter.id == Comment.chapter_id)
             .where(Comment.user_id == user.id)
             .order_by(Comment.created_at.desc())
             .limit(50)
         )
     ).all()
-    return [CommentOut.model_validate(c) for c in comments]
+    items = []
+    for c, novel_title, chapter_title in rows:
+        out = CommentOut.model_validate(c)
+        out.novel_title = novel_title
+        out.chapter_title = chapter_title
+        items.append(out)
+    return items

@@ -29,6 +29,14 @@ class UserLogin(BaseModel):
     password: str
 
 
+class UserUpdateIn(BaseModel):
+    """编辑个人资料"""
+
+    nickname: str | None = Field(default=None, min_length=1, max_length=50)
+    email: str | None = Field(default=None, max_length=100)
+    avatar: str | None = Field(default=None, max_length=255)
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -164,6 +172,8 @@ class CommentOut(BaseModel):
     likes: int
     created_at: datetime
     user: UserOut | None = None
+    novel_title: str | None = None
+    chapter_title: str | None = None
 
 
 class ReviewIn(BaseModel):
