@@ -21,7 +21,10 @@ export default function Reader() {
   const [error, setError] = useState('')
   const [toolbar, setToolbar] = useState(false)
   const [night, setNight] = useState(() => localStorage.getItem('reader-night') === '1')
-  const [fontSize, setFontSize] = useState(17)
+  const [fontSize, setFontSize] = useState(() => {
+    const saved = Number(localStorage.getItem('reader-font'))
+    return saved >= 15 && saved <= 20 ? saved : 17
+  })
   const bodyRef = useRef(null)
 
   // 本章说
@@ -270,8 +273,8 @@ export default function Reader() {
         </div>
         <button className="bar-btn" onClick={(e) => { e.stopPropagation(); if (next) go(next.id) }} disabled={!next}>下一章</button>
         <div className="bar-font">
-          <button className="bar-btn" onClick={(e) => { e.stopPropagation(); setFontSize((s) => Math.min(20, s + 1)) }}>A+</button>
-          <button className="bar-btn" onClick={(e) => { e.stopPropagation(); setFontSize((s) => Math.max(15, s - 1)) }}>A-</button>
+          <button className="bar-btn" onClick={(e) => { e.stopPropagation(); setFontSize((s) => { const ns = Math.min(20, s + 1); localStorage.setItem('reader-font', String(ns)); return ns }) }}>A+</button>
+          <button className="bar-btn" onClick={(e) => { e.stopPropagation(); setFontSize((s) => { const ns = Math.max(15, s - 1); localStorage.setItem('reader-font', String(ns)); return ns }) }}>A-</button>
         </div>
       </footer>
 
