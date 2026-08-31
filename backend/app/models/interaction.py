@@ -78,9 +78,12 @@ class CommentLike(Base):
 
 
 class Ticket(Base):
-    """月票/推荐票"""
+    """月票/推荐票（每人每书每类一票，唯一约束防并发重复）"""
 
     __tablename__ = "tickets"
+    __table_args__ = (
+        UniqueConstraint("user_id", "novel_id", "ticket_type", name="uq_tickets_user_novel_type"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))

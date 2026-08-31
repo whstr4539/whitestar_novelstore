@@ -34,6 +34,7 @@ export default function Home() {
     if (cat) paramsObj.category_id = cat
     apiNovels(paramsObj)
       .then((d) => setNovels(d.items))
+      .catch(() => setNovels([]))   // 请求失败视为空，避免 unhandled rejection
       .finally(() => setLoading(false))
     if (!q && !cat) {
       apiTicketRank(5).then(setRank).catch(() => setRank([]))

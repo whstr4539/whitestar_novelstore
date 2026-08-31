@@ -234,7 +234,8 @@ CREATE TABLE tickets (
     novel_id    BIGINT      NOT NULL REFERENCES novels(id),
     ticket_type VARCHAR(10) NOT NULL DEFAULT 'monthly'    -- monthly月票 / recommend推荐票
                 CHECK (ticket_type IN ('monthly', 'recommend')),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_tickets_user_novel_type UNIQUE (user_id, novel_id, ticket_type) -- 每人每书每类一票
 );
 CREATE INDEX idx_tickets_novel ON tickets(novel_id, created_at DESC);
 COMMENT ON TABLE tickets IS '月票/推荐票表';

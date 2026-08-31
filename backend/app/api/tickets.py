@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -9,6 +10,7 @@ from app.database import get_db
 from app.models import Novel, Ticket, User
 from app.redis_client import get_redis
 from app.schemas import TicketIn, TicketOut, TicketRankItem
+from app.services.cache import cache_key, delete_keys
 
 router = APIRouter(prefix="/api", tags=["月票"])
 
@@ -28,6 +30,7 @@ async def vote_ticket(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在")
 
     # 防重复投票：每人每书每类最多一票
+    # 应用层先查做快速返回；真正兜底靠 DB 唯一约束 uq_tickets_user_novel_type（并发下捕获 IntegrityError）
     exists = await db.scalar(
         select(Ticket.id).where(
             Ticket.user_id == user.id,
@@ -40,10 +43,20 @@ async def vote_ticket(
 
     db.add(Ticket(user_id=user.id, novel_id=novel_id, ticket_type=data.ticket_type))
     novel.total_tickets += 1
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"你已投过{data.ticket_type}票（并发重复请求被拦截）")
 
-    # Redis ZSET：排行榜实时 +1（热数据）
-    await redis.zincrby(TICKET_RANK_KEY, 1, str(novel_id))
+    # 投票成功后再更新热榜与缓存（Redis 故障不应把已成功的投票变成 500）
+    try:
+        # Redis ZSET：排行榜实时 +1（热数据）
+        await redis.zincrby(TICKET_RANK_KEY, 1, str(novel_id))
+        # 失效小说详情缓存，避免月票数在 TTL 内显示旧值
+        await delete_keys(redis, cache_key("novel", novel_id))
+    except Exception:  # noqa: BLE001 缓存/热榜属非关键路径，失败降级不阻塞
+        pass
 
     return TicketOut(
         novel_id=novel_id,

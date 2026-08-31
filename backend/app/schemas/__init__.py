@@ -81,6 +81,7 @@ class NovelOut(BaseModel):
     score: float
     is_vip: bool
     created_at: datetime
+    category_id: int | None = None  # 主分类ID（前端按分类生成封面配色）
     category: CategoryOut | None = None
     author: UserOut | None = None
 

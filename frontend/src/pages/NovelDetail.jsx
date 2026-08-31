@@ -46,6 +46,10 @@ export default function NovelDetail() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    // 切换作品时重置交互状态，避免跨书残留（月票/评分/评论回复/打赏）
+    setVoted(false); setRating(0); setReviewText('')
+    setCommentText(''); setReplyTo(null); setReplyText(''); setRepliesOpen({}); setRepliesMap({})
+    setRewardOpen(false); setRewardAmount(10)
     try {
       const [n, ch, cm, rv, rw] = await Promise.all([
         apiNovel(id), apiChapters(id), apiComments(id), apiReviews(id), apiRewards(id),

@@ -55,7 +55,9 @@ async def admin_stats(
     chapter_count = await db.scalar(select(func.count()).select_from(Chapter))
     views = await db.scalar(select(func.sum(Novel.total_views)))
     revenue = await db.scalar(select(func.sum(ChapterPurchase.price_paid)))
-    recharges = await db.scalar(select(func.sum(RechargeOrder.amount)))
+    recharges = await db.scalar(
+        select(func.sum(RechargeOrder.amount)).where(RechargeOrder.status == "success")
+    )
 
     return {
         "user_count": user_count or 0,

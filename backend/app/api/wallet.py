@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import logging
 import random
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -38,8 +39,8 @@ MOCK_SIGN_KEY = "mock-channel-sign-key-2024"
 
 
 def _gen_order_no() -> str:
-    """生成业务订单号：R + 时间戳 + 随机数"""
-    return f"R{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{random.randint(1000, 9999)}"
+    """生成业务订单号：R + 时间戳 + UUID 片段（并发下单不碰撞）"""
+    return f"R{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:8]}"
 
 
 def _mock_pay_url(order_no: str) -> str:
@@ -162,7 +163,10 @@ async def pay_order(order_no: str, data: PayIn, background_tasks: BackgroundTask
                     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     """第二步：商户把订单提交给渠道。渠道受理后立即返回「处理中」，
     支付结果由后台任务模拟渠道在 3 秒后回调 /pay/notify（前端轮询订单状态）。"""
-    order = await db.scalar(select(RechargeOrder).where(RechargeOrder.order_no == order_no))
+    # 行锁：并发受理同一订单/与回调结算串行化，避免状态被并发覆盖
+    order = await db.scalar(
+        select(RechargeOrder).where(RechargeOrder.order_no == order_no).with_for_update()
+    )
     if order is None or order.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "充值订单不存在")
     if order.status != "pending":
@@ -189,7 +193,10 @@ async def pay_order(order_no: str, data: PayIn, background_tasks: BackgroundTask
 async def cancel_order(order_no: str, db: AsyncSession = Depends(get_db),
                        user: User = Depends(get_current_user)):
     """用户主动取消（收银台点取消）：即时关单，不经过渠道（真实场景为直接关闭支付宝订单）"""
-    order = await db.scalar(select(RechargeOrder).where(RechargeOrder.order_no == order_no))
+    # 行锁：与异步回调 _process_callback 的 FOR UPDATE 串行化，避免"已入账却显示取消"的竞态
+    order = await db.scalar(
+        select(RechargeOrder).where(RechargeOrder.order_no == order_no).with_for_update()
+    )
     if order is None or order.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "充值订单不存在")
     if order.status == "pending":

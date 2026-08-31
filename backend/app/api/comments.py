@@ -1,12 +1,13 @@
 """评论接口：本章说 / 书评 / 楼中楼 / 点赞"""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_user, get_current_user_optional
 from app.database import get_db
-from app.models import Comment, CommentLike, Novel, User
+from app.models import Chapter, Comment, CommentLike, Novel, User
 from app.schemas import CommentIn, CommentLikeOut, CommentOut, Message
 
 router = APIRouter(prefix="/api", tags=["评论"])
@@ -61,10 +62,21 @@ async def create_comment(
     novel = await db.get(Novel, novel_id)
     if novel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在")
+
+    # 本章说归属校验：chapter_id 必须存在且属于该作品，避免"错位/跨书本章说"或指向不存在章节（FK 500）
+    if data.chapter_id is not None:
+        chapter = await db.get(Chapter, data.chapter_id)
+        if chapter is None or chapter.novel_id != novel_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "章节不存在或不属于该作品")
+
     if data.parent_id is not None:
         parent = await db.get(Comment, data.parent_id)
         if parent is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "被回复的评论不存在")
+        if parent.novel_id != novel_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "不能跨作品回复评论")
+        if parent.parent_id is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "仅支持对主评论回复（不支持层叠回复）")
 
     comment = Comment(
         user_id=user.id,
@@ -137,14 +149,30 @@ async def like_comment(
                 CommentLike.comment_id == comment_id, CommentLike.user_id == user.id
             )
         )
-        comment.likes = max(0, comment.likes - 1)
+        # 原子减一（greatest 钳制下限为 0），避免并发点赞丢更新
+        await db.execute(
+            update(Comment).where(Comment.id == comment_id).values(
+                likes=func.greatest(Comment.likes - 1, 0)
+            )
+        )
         await db.commit()
+        await db.refresh(comment)
         return CommentLikeOut(liked=False, likes=comment.likes)
 
     # 未赞 → 点赞（唯一约束防并发重复）
     db.add(CommentLike(comment_id=comment_id, user_id=user.id))
-    comment.likes = comment.likes + 1
-    await db.commit()
+    try:
+        # 原子加一（UPDATE ... WHERE 行锁，避免并发丢更新）
+        await db.execute(
+            update(Comment).where(Comment.id == comment_id).values(likes=Comment.likes + 1)
+        )
+        await db.commit()
+    except IntegrityError:
+        # 并发重复点赞：唯一约束拦截，按"已赞"返回
+        await db.rollback()
+        await db.refresh(comment)
+        return CommentLikeOut(liked=True, likes=comment.likes)
+    await db.refresh(comment)
     return CommentLikeOut(liked=True, likes=comment.likes)
 
 
