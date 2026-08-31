@@ -51,7 +51,6 @@ export default function Reader() {
       if (user && d.novel_id) {
         apiSaveProgress({ novel_id: d.novel_id, chapter_id: Number(cid), progress: 0 }).catch(() => {})
       }
-      window.scrollTo(0, 0)
     } catch (e) {
       if (e.response?.status === 402) {
         setBlocked(true)
@@ -71,12 +70,12 @@ export default function Reader() {
   }, [user])
 
   useEffect(() => {
-    // 恢复滚动位置
+    // 仅当本章内容已加载并渲染完成后恢复/归位滚动位置（无记录则回顶部）
+    // 避免与加载中/加载完成之间产生竞态，保证"离开记住、回来恢复"可靠
+    if (!chapter || chapter.id !== Number(chapterId)) return
     const saved = sessionStorage.getItem(`reader-scroll-${chapterId}`)
-    if (saved) {
-      setTimeout(() => window.scrollTo(0, Number(saved)), 50)
-    }
-  }, [chapterId])
+    window.scrollTo(0, saved ? Number(saved) : 0)
+  }, [chapterId, chapter])
 
   // 记住滚动位置
   const rememberScroll = () => {
