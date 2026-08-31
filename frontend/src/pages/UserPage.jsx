@@ -17,13 +17,13 @@ export default function UserPage() {
       .finally(() => setLoading(false))
   }, [userId])
 
-  if (loading) return <div className="page"><div className="empty">加载中…</div></div>
-  if (!u) return <div className="page"><div className="empty">用户不存在或已被封禁</div></div>
+  if (loading) return <div className="container page-enter"><div className="empty">加载中…</div></div>
+  if (!u) return <div className="container page-enter"><div className="empty">用户不存在或已被封禁</div></div>
 
   const roleName = { admin: '管理员', author: '作者', reader: '读者' }[u.role] || '读者'
 
   return (
-    <div className="page user-page">
+    <div className="container page-enter user-page">
       <div className="user-card">
         <div className="user-card-head">
           <div className="user-avatar">
