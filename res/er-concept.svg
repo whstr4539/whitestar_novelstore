@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 600" width="1260" height="600" font-family="Microsoft YaHei, 微软雅黑, sans-serif">
+<g id="links" stroke="#24252D" stroke-width="2.6" fill="none" stroke-linecap="round">
+<line id="link-1" x1="272.5" y1="205" x2="267.5" y2="205"/>
+<line id="link-2" x1="372.5" y1="205" x2="367.5" y2="205"/>
+<line id="link-3" x1="572.5" y1="205" x2="567.5" y2="205"/>
+<line id="link-4" x1="672.5" y1="205" x2="667.5" y2="205"/>
+<line id="link-5" x1="872.5" y1="205" x2="867.5" y2="205"/>
+<line id="link-6" x1="972.5" y1="205" x2="967.5" y2="205"/>
+<line id="link-7" x1="585" y1="95.5" x2="566" y2="106"/>
+<line id="link-8" x1="556" y1="170" x2="510" y2="175.5"/>
+<line id="link-9" x1="170" y1="252.5" x2="170" y2="301"/>
+<line id="link-10" x1="170" y1="369" x2="170" y2="417.5"/>
+<line id="link-11" x1="205" y1="233" x2="268" y2="310"/>
+<line id="link-12" x1="373" y1="360" x2="435" y2="417.5"/>
+<line id="link-13" x1="505" y1="233" x2="568" y2="310"/>
+<line id="link-14" x1="673" y1="360" x2="735" y2="417.5"/>
+<line id="link-15" x1="805" y1="233" x2="868" y2="310"/>
+<line id="link-16" x1="973" y1="360" x2="1035" y2="417.5"/>
+</g>
+<g id="entities">
+  <g id="entity-user">
+    <rect x="67.5" y="157.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-user-label" x="170" y="211" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">用户</text>
+    <text id="entity-user-attr" x="170" y="284" font-size="11" fill="#9A9A9A" text-anchor="middle">(用户ID, 用户名, 角色)</text>
+  </g>
+  <g id="entity-novel">
+    <rect x="367.5" y="157.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-novel-label" x="470" y="211" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">作品</text>
+    <text id="entity-novel-attr" x="470" y="284" font-size="11" fill="#9A9A9A" text-anchor="middle">(作品ID, 书名, 状态)</text>
+  </g>
+  <g id="entity-chap">
+    <rect x="667.5" y="157.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-chap-label" x="770" y="211" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">章节</text>
+    <text id="entity-chap-attr" x="770" y="284" font-size="11" fill="#9A9A9A" text-anchor="middle">(章节ID, 序号, 定价)</text>
+  </g>
+  <g id="entity-body">
+    <rect x="967.5" y="157.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-body-label" x="1070" y="211" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">正文</text>
+    <text id="entity-body-attr" x="1070" y="284" font-size="11" fill="#9A9A9A" text-anchor="middle">(正文ID, 内容)</text>
+  </g>
+  <g id="entity-cat">
+    <rect x="482.5" y="0.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-cat-label" x="585" y="54" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">分类</text>
+  </g>
+  <g id="entity-wal">
+    <rect x="67.5" y="417.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-wal-label" x="170" y="471" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">钱包</text>
+    <text id="entity-wal-attr" x="170" y="544" font-size="11" fill="#9A9A9A" text-anchor="middle">(钱包ID, 余额)</text>
+  </g>
+  <g id="entity-ord">
+    <rect x="367.5" y="417.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-ord-label" x="470" y="471" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">充值订单</text>
+    <text id="entity-ord-attr" x="470" y="544" font-size="11" fill="#9A9A9A" text-anchor="middle">(订单ID, 金额)</text>
+  </g>
+  <g id="entity-fav">
+    <rect x="667.5" y="417.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-fav-label" x="770" y="471" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">收藏记录</text>
+    <text id="entity-fav-attr" x="770" y="544" font-size="11" fill="#9A9A9A" text-anchor="middle">(用户ID, 作品ID)</text>
+  </g>
+  <g id="entity-pur">
+    <rect x="967.5" y="417.5" width="205" height="95" rx="7" fill="#F4F4F4" stroke="#24252D" stroke-width="3"/>
+    <text id="entity-pur-label" x="1070" y="471" font-size="17" font-weight="bold" fill="#24252D" text-anchor="middle">订阅记录</text>
+    <text id="entity-pur-attr" x="1070" y="544" font-size="11" fill="#9A9A9A" text-anchor="middle">(用户ID, 章节ID)</text>
+  </g>
+</g>
+<g id="relationships">
+  <g id="rel-create">
+    <polygon id="rel-create-shape" points="320,171 372.5,205 320,239 267.5,205" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-create-label" x="320" y="210" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">创作</text>
+  </g>
+  <g id="rel-contain">
+    <polygon id="rel-contain-shape" points="620,171 672.5,205 620,239 567.5,205" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-contain-label" x="620" y="210" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">包含</text>
+  </g>
+  <g id="rel-map">
+    <polygon id="rel-map-shape" points="920,171 972.5,205 920,239 867.5,205" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-map-label" x="920" y="210" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">对应</text>
+  </g>
+  <g id="rel-classify">
+    <polygon id="rel-classify-shape" points="562,104 614.5,138 562,172 509.5,138" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-classify-label" x="562" y="143" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">归类</text>
+  </g>
+  <g id="rel-own">
+    <polygon id="rel-own-shape" points="170,301 222.5,335 170,369 117.5,335" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-own-label" x="170" y="340" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">拥有</text>
+  </g>
+  <g id="rel-recharge">
+    <polygon id="rel-recharge-shape" points="320,301 372.5,335 320,369 267.5,335" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-recharge-label" x="320" y="340" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">充值</text>
+  </g>
+  <g id="rel-collect">
+    <polygon id="rel-collect-shape" points="620,301 672.5,335 620,369 567.5,335" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-collect-label" x="620" y="340" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">收藏</text>
+  </g>
+  <g id="rel-buy">
+    <polygon id="rel-buy-shape" points="920,301 972.5,335 920,369 867.5,335" fill="#FFF3DC" stroke="#FFBD48" stroke-width="3"/>
+    <text id="rel-buy-label" x="920" y="340" font-size="13" font-weight="bold" fill="#24252D" text-anchor="middle">订阅</text>
+  </g>
+</g>
+<g id="cardinality">
+  <g id="c-1">
+    <rect x="241" y="161" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="255" y="180" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">1</text>
+  </g>
+  <g id="c-2">
+    <rect x="364" y="161" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="378" y="180" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">N</text>
+  </g>
+  <g id="c-3">
+    <rect x="541" y="161" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="555" y="180" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">1</text>
+  </g>
+  <g id="c-4">
+    <rect x="664" y="161" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="678" y="180" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">N</text>
+  </g>
+  <g id="c-5">
+    <rect x="841" y="161" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="855" y="180" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">1</text>
+  </g>
+  <g id="c-6">
+    <rect x="964" y="161" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="978" y="180" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">1</text>
+  </g>
+  <g id="c-7">
+    <rect x="598" y="100" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="612" y="119" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">N</text>
+  </g>
+  <g id="c-8">
+    <rect x="558" y="160" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="572" y="179" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">M</text>
+  </g>
+  <g id="c-9">
+    <rect x="184" y="258" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="198" y="277" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">1</text>
+  </g>
+  <g id="c-10">
+    <rect x="184" y="386" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="198" y="405" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">1</text>
+  </g>
+  <g id="c-11">
+    <rect x="216" y="261" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="230" y="280" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">1</text>
+  </g>
+  <g id="c-12">
+    <rect x="414" y="376" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="428" y="395" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">N</text>
+  </g>
+  <g id="c-13">
+    <rect x="516" y="261" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="530" y="280" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">M</text>
+  </g>
+  <g id="c-14">
+    <rect x="716" y="376" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="730" y="395" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">N</text>
+  </g>
+  <g id="c-15">
+    <rect x="816" y="261" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="830" y="280" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">N</text>
+  </g>
+  <g id="c-16">
+    <rect x="1016" y="376" width="28" height="28" rx="6" fill="#FFFFFF"/>
+    <text x="1030" y="395" font-size="13.5" font-weight="bold" fill="#24252D" text-anchor="middle">M</text>
+  </g>
+</g>
+<g id="note">
+  <text x="630" y="560" font-size="11.5" fill="#9A9A9A" text-anchor="middle">说明：归类、收藏、订阅均为多对多联系，逻辑模型中由中间表 novel_category / favorites / chapter_purchases 实现；用户域另有月票、打赏、评论、评分、阅读历史等扩展实体（共 16 张表）</text>
+</g>
+</svg>

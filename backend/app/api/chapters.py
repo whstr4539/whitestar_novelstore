@@ -30,11 +30,36 @@ async def _get_chapter(db: AsyncSession, chapter_id: int) -> Chapter:
 
 
 def _is_payable(chapter: Chapter) -> bool:
-    """该章是否收费（VIP 或价格>0，且非试读）"""
-    return (chapter.is_vip or float(chapter.price) > 0) and not chapter.is_free
+    """该章是否收费：以书币价格 > 0 为唯一依据（并排除试读）。
+    注意：is_vip 仅作运营标识，收费与否看 price。
+    若 is_vip 而 price=0（历史脏数据），视为免费章节，避免"读不了也买不了"的死锁。"""
+    return float(chapter.price) > 0 and not chapter.is_free
 
 
-@router.get("/{chapter_id}", response_model=ChapterReadOut, summary="阅读章节（免费直接读，VIP 需已购）")
+async def _record_history(db: AsyncSession, user_id: int, novel_id: int, chapter_id: int):
+    """写阅读记录（UPSERT 语义：每本书只保留一条进度）"""
+    await db.execute(
+        pg_insert(ReadingHistory)
+        .values(user_id=user_id, novel_id=novel_id, chapter_id=chapter_id, progress=0)
+        .on_conflict_do_update(
+            index_elements=["user_id", "novel_id"],
+            set_={"chapter_id": chapter_id, "last_read_at": func.now()},
+        )
+    )
+    await db.commit()
+
+
+async def _is_owner_or_admin(db: AsyncSession, chapter: Chapter, user: User) -> bool:
+    """章节所属作品的作者本人，或管理员，可免购买阅读"""
+    if user.role == "admin":
+        return True
+    if user.role == "author":
+        novel = await db.get(Novel, chapter.novel_id)
+        return novel is not None and novel.author_id == user.id
+    return False
+
+
+@router.get("/{chapter_id}", response_model=ChapterReadOut, summary="阅读章节（免费直接读，付费需已购）")
 async def read_chapter(
     chapter_id: int,
     db: AsyncSession = Depends(get_db),
@@ -43,30 +68,25 @@ async def read_chapter(
 ):
     # 免费章节正文走 Redis 缓存（热章防 DB 压力）
     cache_hit = None
-    if not user:
-        chapter = await _get_chapter(db, chapter_id)
-        if _is_payable(chapter):
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "VIP 章节需登录后购买")
-    else:
+    if user:
         cache_hit = await get_json(redis, cache_key("chapter", chapter_id))
 
     if cache_hit is not None:
-        # 命中缓存：仍需校验已购
-        purchased = True
-        if _is_payable_chapter(cache_hit["chapter"]):
-            purchased = await has_purchased(db, user.id, chapter_id)
-            if not purchased:
-                raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "该章节为 VIP 章节，请先购买")
+        # 缓存只写入免费章节（付费章正文不缓存），无需购买校验；
+        # 免费章统一 purchased=False，与未命中路径保持一致
+        cache_hit["purchased"] = False
+        if user:
+            await _record_history(db, user.id, cache_hit["novel_id"], chapter_id)
         return cache_hit
 
     chapter = await _get_chapter(db, chapter_id)
 
-    # 权限校验：收费章节必须已购（作者本人可看）
+    # 权限校验：收费章节必须已购（作者本人/管理员可免购）
     purchased = False
     if _is_payable(chapter):
         if user is None:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "VIP 章节需登录后购买")
-        if user.role == "admin":
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "付费章节需登录后购买")
+        if await _is_owner_or_admin(db, chapter, user):
             purchased = True
         else:
             purchased = await has_purchased(db, user.id, chapter_id)
@@ -74,7 +94,7 @@ async def read_chapter(
                 raise HTTPException(
                     status.HTTP_402_PAYMENT_REQUIRED,
                     detail={
-                        "message": f"该章节为 VIP 章节（{chapter.price} 书币/章），请先购买",
+                        "message": f"该章节为付费章节（{chapter.price} 书币），购买后解锁",
                         "chapter": ChapterMetaOut.model_validate(chapter).model_dump(mode="json"),
                     },
                 )
@@ -83,15 +103,7 @@ async def read_chapter(
 
     # 写阅读记录（UPSERT 语义：每本书只保留一条进度）
     if user:
-        await db.execute(
-            pg_insert(ReadingHistory)
-            .values(user_id=user.id, novel_id=chapter.novel_id, chapter_id=chapter.id, progress=0)
-            .on_conflict_do_update(
-                index_elements=["user_id", "novel_id"],
-                set_={"chapter_id": chapter.id, "last_read_at": func.now()},
-            )
-        )
-        await db.commit()
+        await _record_history(db, user.id, chapter.novel_id, chapter.id)
 
     result = ChapterReadOut(
         chapter=ChapterMetaOut.model_validate(chapter),
@@ -103,10 +115,6 @@ async def read_chapter(
     if not _is_payable(chapter):
         await set_json(redis, cache_key("chapter", chapter_id), result.model_dump(mode="json"), settings.CACHE_TTL_CHAPTER)
     return result
-
-
-def _is_payable_chapter(chapter_dict: dict) -> bool:
-    return (chapter_dict.get("is_vip") or float(chapter_dict.get("price") or 0) > 0) and not chapter_dict.get("is_free")
 
 
 @router.post("/{chapter_id}/purchase", response_model=PurchaseOut, summary="购买章节（事务扣费）")

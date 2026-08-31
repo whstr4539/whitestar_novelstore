@@ -1,6 +1,5 @@
 /* 应用入口：路由 + 布局 */
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './stores/AuthContext'
 import Header from './components/Header'
 import Home from './pages/Home'
@@ -11,6 +10,9 @@ import AuthPage from './pages/Auth'
 import Author from './pages/Author'
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
+import UserPage from './pages/UserPage'
+import Notices from './pages/Notices'
+import Bills from './pages/Bills'
 
 /* 阅读页不显示站点导航（沉浸式） */
 function Layout() {
@@ -28,6 +30,9 @@ function Layout() {
         <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
+        <Route path="/users/:userId" element={<UserPage />} />
+        <Route path="/notices" element={<Notices />} />
+        <Route path="/bills" element={<RequireAuth><Bills /></RequireAuth>} />
         <Route path="/author" element={<Author />} />
       </Routes>
     </>

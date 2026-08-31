@@ -11,6 +11,38 @@ from app.schemas import Message, UserOut
 router = APIRouter(prefix="/api/admin", tags=["管理后台"])
 
 
+@router.get("/comments", summary="评论列表（搜索/分页，仅管理员）")
+async def admin_comments(
+    keyword: str | None = Query(None, description="评论内容模糊搜索"),
+    novel_id: int | None = Query(None, description="按作品筛选"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_admin),
+):
+    from app.models import Comment
+    from app.schemas import CommentOut
+    from sqlalchemy.orm import selectinload
+
+    stmt = select(Comment).options(selectinload(Comment.user))
+    count_stmt = select(func.count()).select_from(Comment)
+    if keyword:
+        like = f"%{keyword}%"
+        stmt = stmt.where(Comment.content.ilike(like))
+        count_stmt = count_stmt.where(Comment.content.ilike(like))
+    if novel_id is not None:
+        stmt = stmt.where(Comment.novel_id == novel_id)
+        count_stmt = count_stmt.where(Comment.novel_id == novel_id)
+    total = await db.scalar(count_stmt)
+    comments = (
+        await db.scalars(
+            stmt.order_by(Comment.created_at.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        )
+    ).all()
+    return {"items": [CommentOut.model_validate(c) for c in comments], "total": total or 0}
+
+
 @router.get("/stats", summary="平台统计概览")
 async def admin_stats(
     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_admin)

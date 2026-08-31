@@ -1,10 +1,10 @@
 /* 小说详情：信息区 | 操作区 | Tab（简介/目录/评论/评分） */
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
-  apiAddFavorite, apiBookshelf, apiChapters, apiComments, apiLikeComment,
-  apiNovel, apiPostComment, apiPostReview, apiRemoveFavorite, apiReviews,
-  apiReward, apiRewards, apiVoteTicket, apiWallet,
+  apiAddFavorite, apiBookshelf, apiChapters, apiCommentReplies, apiComments, apiDeleteComment,
+  apiDeleteReview, apiHistory, apiLikeComment, apiNovel, apiPostComment, apiPostReview,
+  apiRemoveFavorite, apiReviews, apiReward, apiRewards, apiVoteTicket, apiWallet,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
 import { Cover, StatusBadge } from '../components/NovelCard'
@@ -28,12 +28,21 @@ export default function NovelDetail() {
 
   // 评论表单
   const [commentText, setCommentText] = useState('')
+  // 楼中楼：parentId 非空 = 回复目标；repliesMap[评论id] = 子评论数组
+  const [replyTo, setReplyTo] = useState(null)
+  const [replyText, setReplyText] = useState('')
+  const [repliesOpen, setRepliesOpen] = useState({})
+  const [repliesMap, setRepliesMap] = useState({})
   // 评分表单
   const [rating, setRating] = useState(0)
   const [reviewText, setReviewText] = useState('')
   // 打赏表单
   const [rewardOpen, setRewardOpen] = useState(false)
   const [rewardAmount, setRewardAmount] = useState(10)
+  // 月票：每个账号每书一票，投过后本地禁用按钮
+  const [voted, setVoted] = useState(false)
+  // 续读：当前用户对该书的最近阅读章节（无则第一章）
+  const [resumeChapterId, setResumeChapterId] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -43,12 +52,15 @@ export default function NovelDetail() {
       ])
       setNovel(n); setChapters(ch); setComments(cm); setReviews(rv); setRewards(rw)
       if (user) {
-        const [shelf, w] = await Promise.all([
+        const [shelf, w, hist] = await Promise.all([
           apiBookshelf().catch(() => ({ items: [] })),
           apiWallet().catch(() => null),
+          apiHistory().catch(() => ({ items: [] })),
         ])
         setFavorited(shelf.items.some((i) => i.novel.id === Number(id)))
         setWallet(w)
+        const rec = hist.items.find((i) => i.novel.id === Number(id))
+        setResumeChapterId(rec?.chapter_id ?? null)
       }
     } catch (e) {
       setMsg(e.response?.data?.detail || '加载失败')
@@ -81,9 +93,45 @@ export default function NovelDetail() {
 
   const like = async (cid) => {
     try {
-      await apiLikeComment(cid)
+      const r = await apiLikeComment(cid)
+      // 单人单赞（toggle）：用响应直接更新，避免整页刷新
+      setComments((list) => list.map((c) => (c.id === cid ? { ...c, liked: r.liked, likes: r.likes } : c)))
+    } catch (e) {
+      if (e.response?.status === 401) flash('请先登录') 
+    }
+  }
+
+  // ---- 楼中楼 ----
+  const toggleReplies = async (cid) => {
+    const open = !repliesOpen[cid]
+    setRepliesOpen((m) => ({ ...m, [cid]: open }))
+    if (open && !repliesMap[cid]) {
+      try {
+        const list = await apiCommentReplies(cid)
+        setRepliesMap((m) => ({ ...m, [cid]: list }))
+      } catch { /* 忽略 */ }
+    }
+  }
+
+  const submitReply = async (cid) => {
+    if (!replyText.trim()) return
+    try {
+      await apiPostComment(id, { content: replyText.trim(), parent_id: cid })
+      setReplyText('')
+      setReplyTo(null)
+      const list = await apiCommentReplies(cid)
+      setRepliesMap((m) => ({ ...m, [cid]: list }))
+      setRepliesOpen((m) => ({ ...m, [cid]: true }))
+    } catch (e) { flash(e.response?.data?.detail || '回复失败') }
+  }
+
+  const removeComment = async (cid) => {
+    if (!window.confirm('确定删除这条评论？')) return
+    try {
+      await apiDeleteComment(cid)
+      flash('评论已删除')
       setComments(await apiComments(id))
-    } catch { /* 忽略 */ }
+    } catch (e) { flash(e.response?.data?.detail || '删除失败') }
   }
 
   const submitReview = async () => {
@@ -97,6 +145,16 @@ export default function NovelDetail() {
     } catch (e) { flash(e.response?.data?.detail || '提交失败') }
   }
 
+  const removeReview = async (rid) => {
+    if (!window.confirm('确定删除这条评分？删除后作品均分将重新计算')) return
+    try {
+      await apiDeleteReview(id, rid)
+      flash('评分已删除')
+      setReviews(await apiReviews(id))
+      load()
+    } catch (e) { flash(e.response?.data?.detail || '删除失败') }
+  }
+
   const submitReward = async () => {
     try {
       await apiReward(id, rewardAmount, '')
@@ -108,17 +166,30 @@ export default function NovelDetail() {
   }
 
   const vote = async () => {
+    if (voted) return
     try {
       await apiVoteTicket(id, 'monthly')
+      setVoted(true)
       flash('月票已投出')
       load()
-    } catch (e) { flash(e.response?.data?.detail || e.response?.status === 409 ? '今日已投过月票' : '投票失败') }
+    } catch (e) {
+      // 后端语义：每人每书每类一票；已投过则确认禁用按钮
+      if (e.response?.status === 409) {
+        setVoted(true)
+        flash('该书您已投过月票')
+      } else {
+        flash(e.response?.data?.detail || '投票失败')
+      }
+    }
   }
 
   if (loading) return <div className="container"><div className="skeleton" style={{ height: 260, marginTop: 24 }} /></div>
-  if (!novel) return <div className="container empty">小说不存在</div>
+  if (!novel) return <div className="container empty">作品不存在或已下架</div>
 
-  const lastChapter = chapters[chapters.length - 1]
+  // 开始阅读：有阅读记录则续读该章，否则从第一章开始
+  const startChapterId = chapters.length
+    ? (resumeChapterId && chapters.some((c) => c.id === resumeChapterId) ? resumeChapterId : chapters[0].id)
+    : null
 
   return (
     <div className="container detail page-enter">
@@ -144,19 +215,21 @@ export default function NovelDetail() {
             <span><b>{novel.total_views}</b> 点击</span>
           </p>
           <p className="detail-tags">
-            {novel.is_vip && <span className="badge badge-vip">VIP 作品</span>}
+            <StatusBadge status={novel.status} />
           </p>
           <div className="detail-actions">
-            {lastChapter && (
-              <button className="btn btn-primary" onClick={() => navigate(`/reader/${lastChapter.id}`)}>
-                开始阅读
+            {startChapterId && (
+              <button className="btn btn-primary" onClick={() => navigate(`/reader/${startChapterId}`)}>
+                {resumeChapterId ? '继续阅读' : '开始阅读'}
               </button>
             )}
-            <button className={`btn ${favorited ? 'btn-ghost' : 'btn-ghost'}`} onClick={toggleFavorite}>
+            <button className={`btn ${favorited ? 'btn-primary' : 'btn-ghost'}`} onClick={toggleFavorite}>
               {favorited ? '✓ 已在书架' : '加入书架'}
             </button>
             <button className="btn btn-ghost" onClick={() => setRewardOpen(!rewardOpen)}>打赏</button>
-            <button className="btn btn-ghost" onClick={vote}>投月票</button>
+            <button className="btn btn-ghost" onClick={vote} disabled={voted}>
+              {voted ? '已投月票' : '投月票'}
+            </button>
           </div>
           {rewardOpen && (
             <div className="reward-box">
@@ -201,7 +274,7 @@ export default function NovelDetail() {
         )}
 
         {tab === 'chapters' && (
-          chapters.length ? <ChapterList chapters={chapters} novelId={novel.id} />
+          chapters.length ? <ChapterList chapters={chapters} />
             : <div className="empty">还没有章节</div>
         )}
 
@@ -214,16 +287,53 @@ export default function NovelDetail() {
                 <button className="btn btn-primary" onClick={submitComment}>发布评论</button>
               </div>
             ) : (
-              <div className="empty"><a href="/login">登录后参与评论</a></div>
+              <div className="empty"><Link to="/login">登录后参与评论</Link></div>
             )}
             {comments.map((c) => (
               <div key={c.id} className="comment-item">
                 <div className="comment-head">
-                  <span className="comment-user">{c.user?.nickname}</span>
+                  <Link to={`/users/${c.user_id}`} className="comment-user">{c.user?.nickname}</Link>
                   <span className="comment-time">{new Date(c.created_at).toLocaleDateString()}</span>
                 </div>
                 <p className="comment-content">{c.content}</p>
-                <button className="comment-like" onClick={() => like(c.id)}>赞 {c.likes}</button>
+                <div className="comment-ops">
+                  <button className={`comment-like ${c.liked ? 'comment-like-on' : ''}`} onClick={() => like(c.id)}>
+                    {c.liked ? '已赞' : '赞'} {c.likes}
+                  </button>
+                  <button className="comment-like" onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyText('') }}>
+                    {replyTo === c.id ? '取消回复' : '回复'}
+                  </button>
+                  <button className="comment-like" onClick={() => toggleReplies(c.id)}>
+                    {repliesOpen[c.id] ? '收起回复' : '展开回复'}
+                  </button>
+                  {user && (user.role === 'admin' || user.id === c.user_id) && (
+                    <button className="comment-like comment-del" onClick={() => removeComment(c.id)}>删除</button>
+                  )}
+                </div>
+
+                {replyTo === c.id && (
+                  <div className="reply-form">
+                    <input className="field" placeholder={`回复 @${c.user?.nickname}`}
+                      value={replyText} onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && submitReply(c.id)} autoFocus />
+                    <button className="btn btn-primary btn-sm" onClick={() => submitReply(c.id)}>回复</button>
+                  </div>
+                )}
+
+                {repliesOpen[c.id] !== undefined && (
+                  <div className="reply-list">
+                    {(repliesMap[c.id] || []).map((r) => (
+                      <div key={r.id} className="reply-item">
+                        <Link to={`/users/${r.user_id}`} className="reply-user">{r.user?.nickname}</Link>
+                        <span className="reply-text">{r.content}</span>
+                        {(user?.role === 'admin' || user?.id === r.user_id) && (
+                          <button className="comment-like comment-del" onClick={() => removeComment(r.id)}>删除</button>
+                        )}
+                      </div>
+                    ))}
+                    {!(repliesMap[c.id] || []).length && <div className="reply-empty">还没有回复</div>}
+                  </div>
+                )}
               </div>
             ))}
             {!comments.length && <div className="empty">还没有评论，来抢沙发</div>}
@@ -245,13 +355,16 @@ export default function NovelDetail() {
                 <button className="btn btn-primary" onClick={submitReview}>提交评分</button>
               </div>
             ) : (
-              <div className="empty"><a href="/login">登录后评分</a></div>
+              <div className="empty"><Link to="/login">登录后评分</Link></div>
             )}
             {reviews.map((r) => (
               <div key={r.id} className="comment-item">
                 <div className="comment-head">
-                  <span className="comment-user">{r.user?.nickname}</span>
+                  <Link to={`/users/${r.user_id}`} className="comment-user">{r.user?.nickname}</Link>
                   <span className="stars-inline">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                  {(user && (user.id === r.user_id || user.role === 'admin')) && (
+                    <span className="comment-del" onClick={() => removeReview(r.id)}>删除</span>
+                  )}
                 </div>
                 {r.content && <p className="comment-content">{r.content}</p>}
               </div>
@@ -264,7 +377,7 @@ export default function NovelDetail() {
             {rewards.length ? rewards.map((r) => (
               <div key={r.id} className="comment-item">
                 <div className="comment-head">
-                  <span className="comment-user">{r.user?.nickname}</span>
+                  <Link to={`/users/${r.user_id}`} className="comment-user">{r.user?.nickname}</Link>
                   <span className="reward-amount">打赏 {Number(r.amount)} 书币</span>
                   <span className="comment-time">{new Date(r.created_at).toLocaleDateString()}</span>
                 </div>
@@ -382,7 +495,8 @@ export default function NovelDetail() {
           gap: var(--space-3);
           margin-bottom: 6px;
         }
-        .comment-user { font-size: var(--fs-14); font-weight: 600; }
+        .comment-user { font-size: var(--fs-14); font-weight: 600; color: var(--accent-text); text-decoration: none; }
+        .comment-user:hover { text-decoration: underline; }
         .comment-time { font-size: var(--fs-12); color: var(--ink-300); margin-left: auto; }
         .comment-content {
           font-size: var(--fs-14);
@@ -396,6 +510,37 @@ export default function NovelDetail() {
           transition: color var(--ease);
         }
         .comment-like:hover { color: var(--accent); }
+        .comment-like-on { color: var(--accent); }
+        .comment-ops {
+          display: flex;
+          gap: var(--space-4);
+          align-items: center;
+        }
+        .comment-del:hover { color: var(--danger); }
+        .reply-form {
+          display: flex;
+          gap: var(--space-2);
+          margin: var(--space-3) 0 0 var(--space-5);
+          max-width: 480px;
+        }
+        .reply-list {
+          margin: var(--space-3) 0 0 var(--space-5);
+          padding-left: var(--space-3);
+          border-left: 2px solid var(--hairline);
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-2);
+        }
+        .reply-item {
+          display: flex;
+          align-items: baseline;
+          gap: var(--space-2);
+          font-size: var(--fs-13);
+        }
+        .reply-user { color: var(--accent-text); font-weight: 600; white-space: nowrap; text-decoration: none; }
+        .reply-user:hover { text-decoration: underline; }
+        .reply-text { color: var(--ink-700); flex: 1; }
+        .reply-empty { font-size: var(--fs-12); color: var(--ink-300); padding: 4px 0; }
         .stars { display: flex; align-items: center; gap: 2px; }
         .star {
           font-size: var(--fs-22);

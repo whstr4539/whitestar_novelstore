@@ -1,5 +1,5 @@
 -- ============================================================
--- 网文书城（起点/番茄模式）数据库结构
+-- 数据库结构
 -- 12 张核心表 + 4 张可选表
 -- 数据库：PostgreSQL 16
 -- ============================================================
@@ -161,6 +161,20 @@ CREATE TABLE comments (
 CREATE INDEX idx_comments_novel  ON comments(novel_id, created_at DESC);
 CREATE INDEX idx_comments_chapter ON comments(chapter_id, created_at DESC);
 COMMENT ON TABLE comments IS '评论表：本章说/书评/回复';
+
+-- ============================================================
+-- 9b. comment_likes 评论点赞表（一人一赞，唯一约束防重复；可取消）
+-- ============================================================
+DROP TABLE IF EXISTS comment_likes CASCADE;
+CREATE TABLE comment_likes (
+    id         BIGSERIAL PRIMARY KEY,
+    comment_id BIGINT      NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    user_id    BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_comment_likes UNIQUE (comment_id, user_id)  -- 一人一赞
+);
+CREATE INDEX idx_comment_likes_user ON comment_likes(user_id);
+COMMENT ON TABLE comment_likes IS '评论点赞记录：唯一约束保证每人每评论仅一赞';
 
 -- ============================================================
 -- 10. wallet 书币账户表（与 users 1:1，避免读写余额锁用户主表）

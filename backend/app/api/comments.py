@@ -1,13 +1,13 @@
 """评论接口：本章说 / 书评 / 楼中楼 / 点赞"""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_current_user_optional
 from app.database import get_db
-from app.models import Comment, Novel, User
-from app.schemas import CommentIn, CommentOut, Message
+from app.models import Comment, CommentLike, Novel, User
+from app.schemas import CommentIn, CommentLikeOut, CommentOut, Message
 
 router = APIRouter(prefix="/api", tags=["评论"])
 
@@ -17,6 +17,7 @@ async def list_comments(
     novel_id: int,
     chapter_id: int | None = Query(None, description="章节 ID，空则返回书评"),
     db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
 ):
     novel = await db.get(Novel, novel_id)
     if novel is None:
@@ -30,8 +31,24 @@ async def list_comments(
     )
     if chapter_id is not None:
         stmt = stmt.where(Comment.chapter_id == chapter_id)
+    else:
+        # 不传 chapter_id = 书评：排除本章说（chapter_id 非空）
+        stmt = stmt.where(Comment.chapter_id.is_(None))
     comments = (await db.scalars(stmt)).all()
-    return [CommentOut.model_validate(c) for c in comments]
+    # 当前用户已赞的评论 id 集合（未登录为空）
+    liked_ids: set[int] = set()
+    if user is not None and comments:
+        rows = await db.scalars(
+            select(CommentLike.comment_id).where(
+                CommentLike.user_id == user.id,
+                CommentLike.comment_id.in_([c.id for c in comments]),
+            )
+        )
+        liked_ids = set(rows.all())
+    return [
+        CommentOut.model_validate(c).model_copy(update={"liked": c.id in liked_ids})
+        for c in comments
+    ]
 
 
 @router.post("/novels/{novel_id}/comments", response_model=CommentOut, status_code=201, summary="发表评论（本章说/书评/回复）")
@@ -63,6 +80,25 @@ async def create_comment(
     return CommentOut.model_validate(comment)
 
 
+@router.get("/comments/{comment_id}/replies", response_model=list[CommentOut], summary="评论的回复列表（楼中楼）")
+async def comment_replies(
+    comment_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """返回某条评论的直接回复（一层），按时间正序"""
+    if await db.get(Comment, comment_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "评论不存在")
+    replies = (
+        await db.scalars(
+            select(Comment)
+            .options(selectinload(Comment.user))
+            .where(Comment.parent_id == comment_id)
+            .order_by(Comment.created_at.asc())
+        )
+    ).all()
+    return [CommentOut.model_validate(c) for c in replies]
+
+
 @router.delete("/comments/{comment_id}", response_model=Message, summary="删除评论（本人或管理员）")
 async def delete_comment(
     comment_id: int,
@@ -79,7 +115,7 @@ async def delete_comment(
     return Message(detail="删除成功")
 
 
-@router.post("/comments/{comment_id}/like", response_model=Message, summary="点赞评论")
+@router.post("/comments/{comment_id}/like", response_model=CommentLikeOut, summary="点赞/取消点赞（一人一赞，再点取消）")
 async def like_comment(
     comment_id: int,
     db: AsyncSession = Depends(get_db),
@@ -88,9 +124,28 @@ async def like_comment(
     comment = await db.get(Comment, comment_id)
     if comment is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "评论不存在")
-    await db.execute(update(Comment).where(Comment.id == comment_id).values(likes=Comment.likes + 1))
+
+    exists = await db.scalar(
+        select(CommentLike.id).where(
+            CommentLike.comment_id == comment_id, CommentLike.user_id == user.id
+        )
+    )
+    if exists:
+        # 已赞 → 取消点赞（防重复：同一用户对同一评论只 +1 / -1）
+        await db.execute(
+            delete(CommentLike).where(
+                CommentLike.comment_id == comment_id, CommentLike.user_id == user.id
+            )
+        )
+        comment.likes = max(0, comment.likes - 1)
+        await db.commit()
+        return CommentLikeOut(liked=False, likes=comment.likes)
+
+    # 未赞 → 点赞（唯一约束防并发重复）
+    db.add(CommentLike(comment_id=comment_id, user_id=user.id))
+    comment.likes = comment.likes + 1
     await db.commit()
-    return Message(detail="点赞成功")
+    return CommentLikeOut(liked=True, likes=comment.likes)
 
 
 @router.get("/comments/me", response_model=list[CommentOut], summary="我的评论（含作品/章节标题）")

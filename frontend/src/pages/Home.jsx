@@ -1,7 +1,7 @@
 /* 首页：推荐位 | 热门榜 | 分类精选 */
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { apiNovels, apiTicketRank } from '../api'
+import { Link, useSearchParams } from 'react-router-dom'
+import { apiCategories, apiNotices, apiNovels, apiTicketRank } from '../api'
 import NovelCard, { Cover } from '../components/NovelCard'
 
 export default function Home() {
@@ -12,6 +12,20 @@ export default function Home() {
   const [novels, setNovels] = useState([])
   const [rank, setRank] = useState([])
   const [loading, setLoading] = useState(true)
+  const [catName, setCatName] = useState('')
+  const [notice, setNotice] = useState(null)  // 首页公告条：最新一条
+
+  useEffect(() => {
+    // 分类页：解析当前分类名用于标题标识
+    if (cat) {
+      apiCategories().then((cats) => {
+        const c = cats.find((x) => x.id === Number(cat))
+        setCatName(c?.name || '')
+      }).catch(() => setCatName(''))
+    } else {
+      setCatName('')
+    }
+  }, [cat])
 
   useEffect(() => {
     setLoading(true)
@@ -23,11 +37,14 @@ export default function Home() {
       .finally(() => setLoading(false))
     if (!q && !cat) {
       apiTicketRank(5).then(setRank).catch(() => setRank([]))
+      // 最新公告（读者端公告入口）
+      apiNotices().then((list) => setNotice(list[0] || null)).catch(() => setNotice(null))
     }
   }, [q, cat])
 
   const featured = novels[0]
-  const rest = novels.slice(1)
+  // 列表区域：推荐位占用第一本；分类/搜索页则展示全部（否则 1 本书时整页空白）
+  const listItems = q || cat ? novels : novels.slice(1)
 
   return (
     <div className="container page-enter">
@@ -38,10 +55,27 @@ export default function Home() {
         </div>
       )}
 
+      {cat && catName && (
+        <div className="page-head">
+          <h1 className="page-title">{catName}</h1>
+          <span className="page-sub">{novels.length} 本作品</span>
+        </div>
+      )}
+
+      {/* 首页公告条：读者进入首页即可看到最新公告 */}
+      {notice && !q && !cat && (
+        <Link to="/notices" className="notice-bar">
+          <span className="notice-bar-tag">公告</span>
+          <span className="notice-bar-title">{notice.title}</span>
+          <span className="notice-bar-desc">{notice.content}</span>
+          <span className="notice-bar-more">查看全部</span>
+        </Link>
+      )}
+
       {/* 推荐位：第一本 */}
       {!q && !cat && featured && (
         <section className="featured">
-          <a href={`/novel/${featured.id}`} className="featured-inner">
+          <Link to={`/novel/${featured.id}`} className="featured-inner">
             <div className="featured-cover-wrap">
               <Cover title={featured.title} categoryId={featured.category_id} size="lg" />
             </div>
@@ -55,7 +89,7 @@ export default function Home() {
               <p className="featured-intro">{featured.intro}</p>
               <span className="btn btn-primary">开始阅读 →</span>
             </div>
-          </a>
+          </Link>
         </section>
       )}
 
@@ -66,14 +100,14 @@ export default function Home() {
             <LoadingList />
           ) : novels.length === 0 ? (
             <div className="empty">
-              没有找到相关作品，<a href="/">看看全部热门</a>
+              没有找到相关作品，<Link to="/">看看全部热门</Link>
             </div>
-          ) : (
+          ) : listItems.length > 0 ? (
             <div className="list-block">
               <h2 className="block-title">{q ? '搜索结果' : '热门作品'}</h2>
-              {rest.length ? rest.map((n, i) => <NovelCard key={n.id} novel={n} />) : <NovelCard novel={featured} />}
+              {listItems.map((n) => <NovelCard key={n.id} novel={n} />)}
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* 月票榜 */}
@@ -82,11 +116,11 @@ export default function Home() {
             <div className="list-block">
               <h2 className="block-title">月票榜</h2>
               {rank.map((r) => (
-                <a key={r.novel_id} href={`/novel/${r.novel_id}`} className="rank-item">
+                <Link key={r.novel_id} to={`/novel/${r.novel_id}`} className="rank-item">
                   <span className={`rank-no rank-no-${r.rank <= 3 ? 'top' : ''}`}>{r.rank}</span>
                   <span className="rank-title">{r.title}</span>
                   <span className="rank-count">{r.ticket_count} 票</span>
-                </a>
+                </Link>
               ))}
             </div>
           </aside>
@@ -188,6 +222,51 @@ export default function Home() {
           font-size: var(--fs-12);
           color: var(--ink-300);
           font-variant-numeric: tabular-nums;
+        }
+        .notice-bar {
+          display: flex;
+          align-items: center;
+          gap: var(--space-3);
+          margin: var(--space-5) 0 0;
+          padding: 10px var(--space-4);
+          background: var(--card);
+          border: 1px solid var(--hairline);
+          border-radius: var(--radius);
+          color: var(--ink-700);
+          transition: border-color var(--ease);
+        }
+        .notice-bar:hover { border-color: var(--accent); }
+        .notice-bar-tag {
+          flex-shrink: 0;
+          font-size: var(--fs-12);
+          color: var(--accent-text);
+          background: var(--accent-weak);
+          border-radius: 3px;
+          padding: 1px 8px;
+        }
+        .notice-bar-title {
+          flex-shrink: 0;
+          font-weight: 600;
+          font-size: var(--fs-14);
+          color: var(--ink-900);
+          max-width: 220px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .notice-bar-desc {
+          flex: 1;
+          min-width: 0;
+          font-size: var(--fs-13);
+          color: var(--ink-500);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .notice-bar-more {
+          flex-shrink: 0;
+          font-size: var(--fs-12);
+          color: var(--accent);
         }
         @media (max-width: 768px) {
           .featured-inner { flex-direction: row; padding: var(--space-4); gap: var(--space-4); }

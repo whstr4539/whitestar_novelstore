@@ -2,6 +2,7 @@
 from app.models.chapter import Chapter, ChapterContent, ChapterPurchase
 from app.models.interaction import (
     Comment,
+    CommentLike,
     Favorite,
     Notice,
     NovelReview,
@@ -25,6 +26,7 @@ __all__ = [
     "Favorite",
     "ReadingHistory",
     "Comment",
+    "CommentLike",
     "Ticket",
     "Reward",
     "NovelReview",

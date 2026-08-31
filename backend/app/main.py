@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from app.api import admin, author, auth, bookshelf, chapters, comments, notices, novels, reviews, rewards, tickets, users, wallet
+from app.api import admin, author, auth, bookshelf, categories, chapters, comments, notices, novels, reviews, rewards, tickets, users, wallet
 from app.config import settings
 from app.database import engine
 from app.redis_client import redis_client
@@ -62,6 +62,7 @@ app.include_router(tickets.router)
 app.include_router(rewards.router)
 app.include_router(author.router)
 app.include_router(notices.router)
+app.include_router(categories.router)
 
 
 @app.get("/", include_in_schema=False)

@@ -1,4 +1,5 @@
 /* 小说卡片：CSS 生成封面（封面是页面里唯一的彩色来源） */
+import { Link } from 'react-router-dom'
 
 // 封面底色板：按分类取色，全部用低饱和深色调
 const COVER_PALETTE = [
@@ -70,13 +71,15 @@ export function Cover({ title, categoryId, size = 'md', className = '' }) {
   )
 }
 
-/* 状态徽标：连载中 / 已完结 */
+/* 状态徽标：连载中 / 已完结 / 已下架 */
 export function StatusBadge({ status }) {
-  return (
-    <span className={`badge ${status === 'finished' ? 'badge-finished' : 'badge-serializing'}`}>
-      {status === 'finished' ? '完结' : '连载'}
-    </span>
-  )
+  const map = {
+    serializing: ['badge-serializing', '连载'],
+    finished: ['badge-finished', '完结'],
+    banned: ['badge-banned', '已下架'],
+  }
+  const [cls, label] = map[status] || map.serializing
+  return <span className={`badge ${cls}`}>{label}</span>
 }
 
 /* 横向卡片：详情/书架复用 */
@@ -84,7 +87,7 @@ export default function NovelCard({ novel, rank }) {
   return (
     <div className="card">
       {rank !== undefined && <span className="card-rank">{rank}</span>}
-      <a href={`/novel/${novel.id}`} className="card-main">
+      <Link to={`/novel/${novel.id}`} className="card-main">
         <Cover title={novel.title} categoryId={novel.category_id} size="md" />
         <div className="card-body">
           <h3 className="card-title">{novel.title}</h3>
@@ -97,14 +100,13 @@ export default function NovelCard({ novel, rank }) {
           </p>
           <p className="card-intro">{novel.intro}</p>
           <p className="card-tags">
-            {novel.is_vip && <span className="badge badge-vip">VIP</span>}
             <StatusBadge status={novel.status} />
             {Number(novel.score) > 0 && (
               <span className="card-score">★ {Number(novel.score).toFixed(1)}</span>
             )}
           </p>
         </div>
-      </a>
+      </Link>
       <style>{`
         .card {
           position: relative;

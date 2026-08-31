@@ -1,8 +1,9 @@
 /* 管理后台（仅管理员）：概览 | 用户 | 作品 | 公告 */
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
-  apiAdminNovels, apiAdminSetNovelStatus, apiAdminSetUserStatus, apiAdminStats,
-  apiAdminUsers, apiCreateNotice, apiDeleteNotice, apiNotices,
+  apiAdminComments, apiAdminNovels, apiAdminSetNovelStatus, apiAdminSetUserStatus, apiAdminStats,
+  apiAdminUsers, apiCreateNotice, apiDeleteComment, apiDeleteNotice, apiNotices,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
 
@@ -20,7 +21,7 @@ export default function Admin() {
     return (
       <div className="container empty">
         无权访问管理后台
-        {!user && <span>，<a href="/login">先登录</a></span>}
+        {!user && <span>，<Link to="/login">先登录</Link></span>}
       </div>
     )
   }
@@ -35,7 +36,7 @@ export default function Admin() {
       {msg && <div className={`alert ${msg.isErr ? 'alert-error' : 'alert-success'}`}>{msg.text}</div>}
 
       <div className="admin-tabs">
-        {[['stats', '概览'], ['users', '用户管理'], ['novels', '作品管理'], ['notices', '公告管理']].map(([k, label]) => (
+        {[['stats', '概览'], ['users', '用户管理'], ['novels', '作品管理'], ['comments', '评论管理'], ['notices', '公告管理']].map(([k, label]) => (
           <button key={k} className={`tab ${tab === k ? 'tab-active' : ''}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
@@ -43,6 +44,7 @@ export default function Admin() {
       {tab === 'stats' && <StatsTab />}
       {tab === 'users' && <UsersTab flash={flash} />}
       {tab === 'novels' && <NovelsTab flash={flash} />}
+      {tab === 'comments' && <CommentsTab flash={flash} />}
       {tab === 'notices' && <NoticesTab flash={flash} />}
 
       <style>{`
@@ -269,7 +271,7 @@ function NovelsTab({ flash }) {
             {novels.map((n) => (
               <tr key={n.id}>
                 <td>{n.id}</td>
-                <td><a href={`/novel/${n.id}`} style={{ color: 'var(--accent)' }}>{n.title}</a></td>
+                <td><Link to={`/novel/${n.id}`} style={{ color: 'var(--accent)' }}>{n.title}</Link></td>
                 <td>{n.author?.nickname}</td>
                 <td className={`st-${n.status}`}>
                   {n.status === 'serializing' ? '连载中' : n.status === 'finished' ? '已完结' : '已下架'}
@@ -293,6 +295,75 @@ function NovelsTab({ flash }) {
 
       <Pagination page={page} total={total} pageSize={10}
         onChange={(p) => (setPage(p), load(keyword, statusFilter, p))} />
+    </div>
+  )
+}
+
+/* ---------- 评论管理 ---------- */
+function CommentsTab({ flash }) {
+  const [items, setItems] = useState([])
+  const [total, setTotal] = useState(0)
+  const [keyword, setKeyword] = useState('')
+  const [page, setPage] = useState(1)
+
+  const load = (kw = keyword, pg = page) => {
+    apiAdminComments({ keyword: kw || undefined, page: pg, page_size: 10 })
+      .then((d) => { setItems(d.items); setTotal(d.total) })
+      .catch(() => {})
+  }
+  useEffect(() => { load() }, []) // eslint-disable-line
+
+  const remove = async (c) => {
+    if (!window.confirm(`删除 ${c.user?.nickname} 的这条评论？\n“${c.content.slice(0, 30)}…”`)) return
+    try {
+      await apiDeleteComment(c.id)
+      flash('评论已删除')
+      load(keyword, page)
+    } catch (e) {
+      flash(e.response?.data?.detail || '删除失败', true)
+    }
+  }
+
+  return (
+    <div>
+      <div className="admin-search">
+        <input className="field" placeholder="搜索评论内容"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && (setPage(1), load(keyword, 1))} />
+        <button className="btn btn-ghost" onClick={() => (setPage(1), load(keyword, 1))}>搜索</button>
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr><th>ID</th><th>用户</th><th>类型</th><th>内容</th><th>点赞</th><th>时间</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            {items.map((c) => (
+              <tr key={c.id}>
+                <td>{c.id}</td>
+                <td>{c.user?.nickname}</td>
+                <td>
+                  {c.parent_id ? '回复' : c.chapter_id ? '本章说' : '书评'}
+                </td>
+                <td style={{ maxWidth: 420, whiteSpace: 'normal' }}>{c.content}</td>
+                <td>{c.likes}</td>
+                <td>{c.created_at?.slice(0, 10)}</td>
+                <td>
+                  <button className="btn op-btn op-ban" onClick={() => remove(c)}>删除</button>
+                </td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-300)', padding: 24 }}>暂无评论</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination page={page} total={total} pageSize={10}
+        onChange={(p) => (setPage(p), load(keyword, p))} />
     </div>
   )
 }

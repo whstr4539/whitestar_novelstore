@@ -1,7 +1,7 @@
 """月票/推荐票接口：投票（防重复）+ 月票榜（Redis ZSET 实时排行 + PG 持久化）"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -61,6 +61,27 @@ async def ticket_rank(
 ):
     # 从 Redis ZSET 取前 N 名（降序）
     raw = await redis.zrevrange(TICKET_RANK_KEY, 0, limit - 1, withscores=True)
+
+    # 自愈：ZSET 为空（Redis 重建/数据重置）时从 PG 聚合回填，保证榜单不丢失
+    if not raw:
+        rows = (
+            await db.execute(
+                select(Ticket.novel_id, func.count(Ticket.id))
+                .group_by(Ticket.novel_id)
+            )
+        ).all()
+        if rows:
+            # 批量回填 ZSET（同时排除已下架作品）
+            active_ids = set(
+                (await db.scalars(select(Novel.id).where(Novel.status != "banned"))).all()
+            )
+            pipeline = redis.pipeline()
+            for nid, cnt in rows:
+                if int(nid) in active_ids and cnt > 0:
+                    pipeline.zadd(TICKET_RANK_KEY, {str(nid): int(cnt)})
+            await pipeline.execute()
+            raw = await redis.zrevrange(TICKET_RANK_KEY, 0, limit - 1, withscores=True)
+
     if not raw:
         return []
 

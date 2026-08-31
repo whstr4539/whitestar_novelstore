@@ -11,7 +11,7 @@ from app.schemas import UserOut, UserUpdateIn
 router = APIRouter(prefix="/api/users", tags=["用户"])
 
 
-# 注意：/me 必须注册在 /{user_id} 之前，否则 "me" 会被解析为 user_id
+# 编辑个人资料（PUT /me 与 GET /{user_id} 方法不同，无路由冲突）
 @router.put("/me", response_model=UserOut, summary="编辑个人资料（昵称/邮箱/头像）")
 async def update_me(
     data: UserUpdateIn,

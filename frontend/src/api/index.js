@@ -1,4 +1,4 @@
-/* 后端接口函数：与 FastAPI 34 个接口一一对应 */
+/* 后端接口函数：与 FastAPI 路由一一对应 */
 import client from './client'
 
 // ---------- 认证 ----------
@@ -9,6 +9,9 @@ export const apiRegister = (data) =>
   client.post('/auth/register', data).then((r) => r.data)
 
 export const apiMe = () => client.get('/auth/me').then((r) => r.data)
+
+// ---------- 分类 ----------
+export const apiCategories = () => client.get('/categories').then((r) => r.data)
 
 // ---------- 小说 ----------
 export const apiNovels = (params = {}) =>
@@ -53,6 +56,17 @@ export const apiWallet = () => client.get('/wallet').then((r) => r.data)
 export const apiRecharge = (amount) =>
   client.post('/wallet/recharge', { amount, payment_method: 'mock' }).then((r) => r.data)
 
+export const apiPayOrder = (orderNo) =>
+  client.post(`/wallet/pay/${orderNo}`, {}).then((r) => r.data)
+
+export const apiCancelOrder = (orderNo) =>
+  client.post(`/wallet/pay/${orderNo}/cancel`, {}).then((r) => r.data)
+
+export const apiOrderStatus = (orderNo) =>
+  client.get(`/wallet/order/${orderNo}`).then((r) => r.data)
+
+export const apiBills = () => client.get('/wallet/bills').then((r) => r.data)
+
 // ---------- 评论 ----------
 export const apiComments = (novelId, chapterId) =>
   client.get(`/novels/${novelId}/comments`, {
@@ -61,6 +75,12 @@ export const apiComments = (novelId, chapterId) =>
 
 export const apiPostComment = (novelId, data) =>
   client.post(`/novels/${novelId}/comments`, data).then((r) => r.data)
+
+export const apiDeleteComment = (commentId) =>
+  client.delete(`/comments/${commentId}`).then((r) => r.data)
+
+export const apiCommentReplies = (commentId) =>
+  client.get(`/comments/${commentId}/replies`).then((r) => r.data)
 
 export const apiLikeComment = (commentId) =>
   client.post(`/comments/${commentId}/like`).then((r) => r.data)
@@ -71,6 +91,9 @@ export const apiReviews = (novelId) =>
 
 export const apiPostReview = (novelId, data) =>
   client.post(`/novels/${novelId}/reviews`, data).then((r) => r.data)
+
+export const apiDeleteReview = (novelId, reviewId) =>
+  client.delete(`/novels/${novelId}/reviews/${reviewId}`).then((r) => r.data)
 
 // ---------- 月票 / 打赏 ----------
 export const apiVoteTicket = (novelId, ticketType) =>
@@ -85,11 +108,19 @@ export const apiReward = (novelId, amount, message) =>
 // ---------- 作者后台 ----------
 export const apiMyNovels = () => client.get('/author/my-novels').then((r) => r.data)
 
+export const apiAuthorStats = () => client.get('/author/stats').then((r) => r.data)
+
 export const apiCreateNovel = (data) =>
   client.post('/author/novels', data).then((r) => r.data)
 
 export const apiPublishChapter = (novelId, data) =>
   client.post(`/author/novels/${novelId}/chapters`, data).then((r) => r.data)
+
+export const apiUpdateChapter = (chapterId, data) =>
+  client.put(`/author/chapters/${chapterId}`, data).then((r) => r.data)
+
+export const apiNovelEarnings = (novelId) =>
+  client.get(`/author/novels/${novelId}/earnings`).then((r) => r.data)
 
 // ---------- 公告 ----------
 export const apiNotices = () => client.get('/notices').then((r) => r.data)
@@ -115,6 +146,9 @@ export const apiAdminSetUserStatus = (userId, status) =>
 
 export const apiAdminNovels = (params = {}) =>
   client.get('/admin/novels', { params }).then((r) => r.data)
+
+export const apiAdminComments = (params = {}) =>
+  client.get('/admin/comments', { params }).then((r) => r.data)
 
 export const apiAdminSetNovelStatus = (novelId, status) =>
   client.put(`/admin/novels/${novelId}/status`, { status }).then((r) => r.data)

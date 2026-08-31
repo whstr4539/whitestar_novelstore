@@ -37,7 +37,7 @@ export default function AuthPage({ mode }) {
       <div className="auth-card">
         <h1 className="auth-title">{isLogin ? '欢迎回来' : '加入星辰书城'}</h1>
         <p className="auth-sub">
-          {isLogin ? '登录后同步书架与阅读进度' : '注册即送 0 书币，充值畅读 VIP 章节'}
+          {isLogin ? '登录后同步书架与阅读进度' : '注册自动开通书币钱包，充值畅读付费章节'}
         </p>
 
         {error && <div className="alert alert-error">{error}</div>}

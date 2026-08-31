@@ -1,18 +1,23 @@
 /* 顶部导航：Logo | 分类 | 搜索 | 书架 | 登录态 */
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { apiCategories } from '../api'
 import { useAuth } from '../stores/AuthContext'
-
-const CATEGORIES = [
-  { id: 6, name: '玄幻' },
-  { id: 7, name: '都市' },
-  { id: 8, name: '科幻' },
-]
 
 export default function Header() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const cat = params.get('cat') || ''
   const [keyword, setKeyword] = useState('')
+  // 顶级分类（parent_id 为 null），来自数据库，避免硬编码错位
+  const [topCategories, setTopCategories] = useState([])
+
+  useEffect(() => {
+    apiCategories()
+      .then((cats) => setTopCategories(cats.filter((c) => c.parent_id === null)))
+      .catch(() => {})
+  }, [])
 
   const submitSearch = (e) => {
     e.preventDefault()
@@ -28,8 +33,13 @@ export default function Header() {
         </Link>
 
         <nav className="nav">
-          {CATEGORIES.map((c) => (
-            <Link key={c.id} to={`/?cat=${c.id}`} className="nav-link">
+          {topCategories.map((c) => (
+            <Link
+              key={c.id}
+              to={`/?cat=${c.id}`}
+              className={`nav-link ${cat === String(c.id) ? 'nav-link-active' : ''}`}
+              aria-current={cat === String(c.id) ? 'page' : undefined}
+            >
               {c.name}
             </Link>
           ))}
@@ -119,6 +129,11 @@ export default function Header() {
         }
         .nav-link:hover {
           color: var(--accent);
+        }
+        .nav-link-active {
+          color: var(--accent);
+          font-weight: 600;
+          box-shadow: 0 2px 0 0 var(--accent);
         }
         .search {
           flex: 1;

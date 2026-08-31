@@ -201,8 +201,9 @@ img {
 }
 .badge-serializing { background: var(--accent-weak); color: var(--accent-text); }
 .badge-finished   { background: #eef1ea; color: var(--success); }
-.badge-vip        { background: #f7eeda; color: var(--gold); }
+.badge-paid       { background: #f7eeda; color: var(--gold); }
 .badge-free       { background: #f0f0f2; color: var(--ink-500); }
+.badge-banned     { background: #f6e9e7; color: var(--danger); }
 
 /* 页面标题区 */
 .page-head {

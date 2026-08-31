@@ -1,9 +1,9 @@
 /* 个人中心：资料编辑 | 可点击统计（收藏/在读/评论）| 评论历史 | 角色入口
    设计依据 novel-reading-ui skill：单卡片、hairline 分区、无 emoji */
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
-  apiBookshelf, apiHistory, apiMyComments, apiMyNovels, apiRecharge, apiUpdateProfile, apiWallet,
+  apiBookshelf, apiCancelOrder, apiHistory, apiMyComments, apiMyNovels, apiOrderStatus, apiPayOrder, apiRecharge, apiUpdateProfile, apiWallet,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
 
@@ -32,6 +32,11 @@ export default function Profile() {
   const [editForm, setEditForm] = useState({ nickname: '', email: '' })
   const [saveBusy, setSaveBusy] = useState(false)
 
+  // 模拟支付（三步：下单 → 收银台 → 支付确认）
+  const [cashier, setCashier] = useState(null)   // { order_no, amount, coins, pay_url }
+  const [paying, setPaying] = useState(false)    // 等待“第三方”处理中
+  const [payResult, setPayResult] = useState(null) // { status, balance_after, coins }
+
   const load = () => {
     setLoading(true)
     Promise.all([
@@ -56,14 +61,61 @@ export default function Profile() {
   const doRecharge = async () => {
     setRechargeBusy(true)
     try {
-      const d = await apiRecharge(amount)
-      flash(`充值成功：到账 ${d.coins} 书币，当前余额 ${d.balance_after}`)
-      setWallet(await apiWallet())
+      const d = await apiRecharge(amount)      // 第一步：下单（仅创建待支付订单）
+      setCashier(d)                            // 进入模拟收银台
     } catch (e) {
-      flash(e.response?.data?.detail || '充值失败', true)
+      flash(e.response?.data?.detail || '下单失败', true)
     } finally {
       setRechargeBusy(false)
     }
+  }
+
+  // 收银台：确认支付（渠道受理，前端轮询订单状态直到回调结果）
+  const confirmPay = async () => {
+    setPaying(true)
+    setPayResult(null)
+    try {
+      await apiPayOrder(cashier.order_no)          // 受理：立即返回 processing
+      // 轮询订单状态（渠道 3 秒后回调，轮询直到终态）
+      const poll = async (tries) => {
+        if (tries <= 0) {
+          setPayResult({ status: 'failed', detail: '支付结果确认超时，请稍后在充值记录中查看' })
+          setPaying(false)
+          return
+        }
+        const d = await apiOrderStatus(cashier.order_no)
+        if (d.status === 'success' || d.status === 'failed' || d.status === 'cancelled') {
+          setPayResult(d)
+          setWallet(await apiWallet())
+          setPaying(false)
+          return
+        }
+        setTimeout(() => poll(tries - 1), 1200)    // pending：1.2s 间隔继续轮询
+      }
+      poll(15)                                      // 最多等 18 秒（> 3 秒渠道耗时）
+    } catch (e) {
+      setPayResult({ status: 'failed', detail: e.response?.data?.detail || '支付受理失败' })
+      setPaying(false)
+    }
+  }
+
+  // 收银台：取消支付（即时关单，不走渠道）
+  const cancelPay = async () => {
+    setPaying(true)
+    try {
+      const d = await apiCancelOrder(cashier.order_no)
+      setPayResult(d)
+    } catch {
+      setPayResult({ status: 'cancelled' })
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  const closeCashier = () => {
+    setCashier(null)
+    setPayResult(null)
+    setPaying(false)
   }
 
   const startEdit = () => {
@@ -89,7 +141,7 @@ export default function Profile() {
     }
   }
 
-  if (!user) return <div className="container empty">请先<a href="/login">登录</a></div>
+  if (!user) return <div className="container empty">请先<Link to="/login">登录</Link></div>
 
   const roleLabel = user.role === 'admin' ? '管理员' : user.role === 'author' ? '签约作者' : '读者'
 
@@ -102,7 +154,6 @@ export default function Profile() {
     <div className="container profile page-enter">
       <div className="page-head">
         <h1 className="page-title">个人中心</h1>
-        <span className="page-sub">@{user.username}</span>
       </div>
 
       {msg && <div className={`alert ${msg.isErr ? 'alert-error' : 'alert-success'}`}>{msg.text}</div>}
@@ -167,11 +218,64 @@ export default function Profile() {
               </button>
             ))}
             <button className="btn btn-primary" onClick={doRecharge} disabled={rechargeBusy}>
-              {rechargeBusy ? '处理中…' : '充值'}
+              {rechargeBusy ? '下单中…' : '充值'}
             </button>
-            <span className="p-hint">1 元 = 10 书币</span>
+            <span className="p-hint">1 元 = 10 书币 · 模拟支付</span>
           </div>
+          <Link to="/bills" className="p-bills-link">
+            <span>账单</span>
+            <span className="p-bills-arrow">查看 →</span>
+          </Link>
         </section>
+
+        {/* 模拟收银台弹层：下单后进入，支付 3 秒回调 */}
+        {cashier && (
+          <div className="cashier-mask" onClick={closeCashier}>
+            <div className="cashier" onClick={(e) => e.stopPropagation()}>
+              {!payResult ? (
+                <>
+                  <h3 className="cashier-title">确认支付</h3>
+                  <p className="cashier-order">订单号 {cashier.order_no}</p>
+                  <p className="cashier-amount">¥{Number(cashier.amount)} <span className="cashier-coins">= {Number(cashier.coins)} 书币</span></p>
+                  <p className="cashier-channel">收款方：星辰书城 · 模拟支付宝收银台</p>
+                  {paying ? (
+                    <div className="cashier-waiting">
+                      <span className="cashier-spinner" />
+                      正在连接支付渠道，请稍候（模拟 3 秒）…
+                    </div>
+                  ) : (
+                    <div className="cashier-ops">
+                      <button className="btn btn-primary" onClick={confirmPay}>确认支付</button>
+                      <button className="btn btn-ghost" onClick={cancelPay}>取消</button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {payResult.status === 'success' ? (
+                    <>
+                      <p className="cashier-result cashier-result-ok">支付成功</p>
+                      <p className="cashier-detail">到账 {Number(payResult.coins)} 书币，当前余额 {Number(payResult.balance_after)} 书币</p>
+                    </>
+                  ) : payResult.status === 'failed' ? (
+                    <>
+                      <p className="cashier-result cashier-result-fail">支付失败</p>
+                      <p className="cashier-detail">{payResult.detail || '渠道未完成扣款，请重试'}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="cashier-result">已取消支付</p>
+                      <p className="cashier-detail">订单已关闭，未产生扣款</p>
+                    </>
+                  )}
+                  <div className="cashier-ops">
+                    <button className="btn btn-primary" onClick={closeCashier}>完成</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 统计区：可点击跳转 */}
         <section className="p-sec p-stats">
@@ -199,14 +303,14 @@ export default function Profile() {
               <div className="empty">还没有发表过评论</div>
             ) : (
               myComments.map((c) => (
-                <a key={c.id} className="p-comment" href={`/novel/${c.novel_id}`}>
+                <Link key={c.id} className="p-comment" to={`/novel/${c.novel_id}`}>
                   <div className="p-comment-head">
                     <span className="p-comment-novel">{c.novel_title}</span>
                     {c.chapter_title && <span className="p-comment-chapter">{c.chapter_title}</span>}
                     <span className="p-comment-time">{new Date(c.created_at).toLocaleDateString()}</span>
                   </div>
                   <p className="p-comment-content">{c.content}</p>
-                </a>
+                </Link>
               ))
             )}
           </section>
@@ -300,6 +404,73 @@ export default function Profile() {
           background: var(--accent-weak) !important;
         }
         .p-hint { font-size: var(--fs-12); color: var(--ink-300); margin-left: var(--space-2); }
+        /* 账单入口 */
+        .p-bills-link {
+          display: flex;
+          align-items: center;
+          gap: var(--space-3);
+          margin-top: var(--space-4);
+          padding-top: var(--space-3);
+          border-top: 1px solid var(--hairline);
+          font-size: var(--fs-14);
+          font-weight: 500;
+          color: var(--ink-900);
+          transition: color var(--ease);
+        }
+        .p-bills-link:hover { color: var(--accent); }
+        .p-bills-sub { font-size: var(--fs-12); font-weight: 400; color: var(--ink-500); }
+        .p-bills-arrow { margin-left: auto; font-size: var(--fs-12); font-weight: 400; color: var(--accent); }
+        /* 模拟收银台弹层 */
+        .cashier-mask {
+          position: fixed;
+          inset: 0;
+          z-index: 100;
+          background: rgba(38, 38, 42, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .cashier {
+          width: 360px;
+          max-width: calc(100vw - 48px);
+          background: var(--paper);
+          border-radius: var(--radius-lg);
+          padding: var(--space-6);
+          box-shadow: var(--shadow-soft), 0 12px 40px rgba(38, 38, 42, 0.18);
+          text-align: center;
+        }
+        .cashier-title { font-size: var(--fs-18); font-weight: 600; margin-bottom: var(--space-3); }
+        .cashier-order { font-size: var(--fs-12); color: var(--ink-500); font-variant-numeric: tabular-nums; }
+        .cashier-amount {
+          font-size: var(--fs-28); font-weight: 700;
+          margin: var(--space-4) 0 var(--space-2);
+          font-variant-numeric: tabular-nums;
+        }
+        .cashier-coins { font-size: var(--fs-14); font-weight: 400; color: var(--ink-500); }
+        .cashier-channel { font-size: var(--fs-12); color: var(--ink-500); margin-bottom: var(--space-5); }
+        .cashier-waiting {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: var(--space-2);
+          font-size: var(--fs-13);
+          color: var(--ink-500);
+          padding: var(--space-4) 0;
+        }
+        .cashier-spinner {
+          width: 14px; height: 14px;
+          border: 2px solid var(--hairline);
+          border-top-color: var(--accent);
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .cashier-ops { display: flex; gap: var(--space-3); justify-content: center; }
+        .cashier-ops .btn { min-width: 120px; }
+        .cashier-result { font-size: var(--fs-18); font-weight: 600; margin-bottom: var(--space-2); }
+        .cashier-result-ok { color: var(--success); }
+        .cashier-result-fail { color: var(--danger); }
+        .cashier-detail { font-size: var(--fs-13); color: var(--ink-500); margin-bottom: var(--space-5); }
 
         /* 统计区：整体可点击 */
         .p-stats { display: flex; gap: var(--space-7); padding: var(--space-4) var(--space-6); }

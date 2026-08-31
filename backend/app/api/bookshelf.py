@@ -85,8 +85,17 @@ async def reading_history(
             .order_by(ReadingHistory.last_read_at.desc())
         )
     ).all()
+    rows = (
+        await db.execute(
+            select(ReadingHistory, Novel)
+            .join(Novel, Novel.id == ReadingHistory.novel_id)
+            .options(selectinload(Novel.category), selectinload(Novel.author))
+            .where(ReadingHistory.user_id == user.id)
+            .order_by(ReadingHistory.last_read_at.desc())
+        )
+    ).all()
     items = [
-        BookshelfItem(novel=NovelOut.model_validate(n), added_at=h.last_read_at)
+        BookshelfItem(novel=NovelOut.model_validate(n), added_at=h.last_read_at, chapter_id=h.chapter_id)
         for h, n in rows
     ]
     return BookshelfOut(items=items)

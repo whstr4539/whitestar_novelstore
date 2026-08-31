@@ -1,6 +1,6 @@
 /* 书架：收藏 + 阅读历史 两个 Tab */
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { apiBookshelf, apiHistory, apiRemoveFavorite } from '../api'
 import NovelCard from '../components/NovelCard'
 
@@ -48,7 +48,7 @@ export default function Bookshelf() {
       ) : list.length === 0 ? (
         <div className="empty">
           {tab === 'shelf' ? '书架空空如也，去发现好书 ' : '还没有阅读记录 '}
-          <a href="/">→ 去逛逛</a>
+          <Link to="/">→ 去逛逛</Link>
         </div>
       ) : (
         <div className="shelf-list">

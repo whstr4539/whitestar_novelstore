@@ -65,6 +65,18 @@ class Comment(Base):
     user: Mapped["User"] = relationship()  # type: ignore[name-defined]
 
 
+class CommentLike(Base):
+    """评论点赞记录：唯一约束保证每人每评论一赞（可取消）"""
+
+    __tablename__ = "comment_likes"
+    __table_args__ = (UniqueConstraint("comment_id", "user_id", name="uq_comment_likes"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    comment_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("comments.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Ticket(Base):
     """月票/推荐票"""
 

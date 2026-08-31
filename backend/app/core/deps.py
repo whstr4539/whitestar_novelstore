@@ -27,6 +27,22 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """可选登录：未带 token 返回 None；带无效 token 仍拒绝（401）"""
+    if credentials is None:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token 无效或已过期")
+    user = await db.scalar(select(User).where(User.id == int(payload["sub"])))
+    if user is None or user.status != 1:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在或已被封禁")
+    return user
+
+
 async def get_current_author(user: User = Depends(get_current_user)) -> User:
     """仅作者/管理员可访问"""
     if user.role not in ("author", "admin"):

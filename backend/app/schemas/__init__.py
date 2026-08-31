@@ -46,6 +46,7 @@ class UserOut(BaseModel):
     avatar: str | None = None
     email: str | None = None
     role: str
+    status: int = 1  # 1正常 0封禁（管理后台需要）
     created_at: datetime
 
 
@@ -126,6 +127,7 @@ class PurchaseOut(BaseModel):
 class BookshelfItem(BaseModel):
     novel: NovelOut
     added_at: datetime
+    chapter_id: int | None = None  # 阅读历史条目的最近阅读章节（书架条目为 None）
 
 
 class BookshelfOut(BaseModel):
@@ -140,17 +142,73 @@ class WalletOut(BaseModel):
     updated_at: datetime
 
 
+class RechargeOut(BaseModel):
+    """创建充值订单响应：订单待支付，余额未变"""
+
+    order_no: str
+    amount: float
+    coins: float
+    status: str  # pending
+    payment_method: str = "mock"
+    pay_url: str | None = None  # 模拟第三方收银台地址
+
+
+class PayIn(BaseModel):
+    """模拟支付受理入参：无 result（结果由渠道回调决定，不由商户指定）"""
+
+    pass
+
+
+class NotifyIn(BaseModel):
+    """模拟渠道回调入参：订单号 + 结果 + 签名（验签防伪造）"""
+
+    order_no: str
+    result: Literal["success", "fail", "cancel"]
+    sign: str
+
+
+class OrderOut(BaseModel):
+    """订单状态查询（前端轮询用）"""
+
+    order_no: str
+    status: str
+    amount: float
+    coins: float
+    balance_after: float | None = None
+
+
+class BillItem(BaseModel):
+    """账单流水条目（充值/订阅/打赏统一格式）"""
+
+    type: Literal["recharge", "purchase", "reward"]
+    title: str
+    detail: str | None = None
+    amount: float  # 正数，方向由 direction 表示
+    direction: Literal["in", "out"]
+    created_at: datetime
+
+
+class BillsOut(BaseModel):
+    """账单响应：流水 + 累计收入/支出"""
+
+    items: list[BillItem]
+    total_in: float
+    total_out: float
+
+
 class RechargeIn(BaseModel):
     amount: float = Field(gt=0, le=10000, description="充值金额（元）")
     payment_method: Literal["alipay", "wechat", "mock"] = "mock"
 
 
-class RechargeOut(BaseModel):
+class PayOut(BaseModel):
+    """支付确认响应：status 为 success / failed / cancelled / pending"""
+
     order_no: str
+    status: str
     amount: float
     coins: float
-    status: str
-    balance_after: float | None = None
+    balance_after: float | None = None  # 仅成功时返回新余额
 
 
 # ---------- 评论 ----------
@@ -174,6 +232,12 @@ class CommentOut(BaseModel):
     user: UserOut | None = None
     novel_title: str | None = None
     chapter_title: str | None = None
+    liked: bool = False  # 当前用户是否已赞（未登录恒为 False）
+
+
+class CommentLikeOut(BaseModel):
+    liked: bool
+    likes: int
 
 
 class ReviewIn(BaseModel):
@@ -236,14 +300,12 @@ class AuthorNovelIn(BaseModel):
     intro: str | None = Field(default=None, max_length=2000)
     cover_url: str | None = None
     category_id: int | None = None
-    is_vip: bool = False
 
 
 class ChapterCreateIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, description="章节正文")
     price: float = Field(default=0, ge=0, description="书币价格，0=免费")
-    is_vip: bool = False
     is_free: bool = False
 
 
@@ -251,7 +313,6 @@ class ChapterUpdateIn(BaseModel):
     title: str | None = None
     content: str | None = None
     price: float | None = Field(default=None, ge=0)
-    is_vip: bool | None = None
     is_free: bool | None = None
 
 
@@ -263,6 +324,20 @@ class ChapterCreatedOut(BaseModel):
     word_count: int
     novel_chapter_count: int
     novel_word_count: int
+
+
+class AuthorStatsOut(BaseModel):
+    """写作台概览：作品数 / 点击 / 章节 / 收入"""
+
+    novel_count: int
+    total_views: int
+    chapter_count: int
+    word_count: int
+    chapter_revenue: float
+    reward_revenue: float
+    total_revenue: float
+    purchase_count: int
+    reward_count: int
 
 
 # ---------- 公告 ----------

@@ -9,6 +9,7 @@
 """
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Chapter, ChapterPurchase, Wallet
@@ -22,7 +23,7 @@ async def purchase_chapter(
     返回 (购买记录, 扣费后余额)。
     余额不足抛 402，重复购买抛 409。
     """
-    # 幂等检查：已购买过直接返回（不重复扣费）
+    # 幂等检查：已购买过直接返回
     existing = await db.scalar(
         select(ChapterPurchase).where(
             ChapterPurchase.user_id == user_id,
@@ -38,7 +39,7 @@ async def purchase_chapter(
 
     price = float(chapter.price)
     if price <= 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "免费章节无需购买")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "该章节无需购买（价格为 0）")
 
     # 1. 行级锁：防止并发扣费超扣
     wallet = await db.scalar(
@@ -62,14 +63,18 @@ async def purchase_chapter(
         .values(balance=new_balance)
     )
 
-    # 4. 写购买记录
+    # 4. 写购买记录（唯一约束防并发重复）
     purchase = ChapterPurchase(
         user_id=user_id, chapter_id=chapter.id, price_paid=price
     )
     db.add(purchase)
 
-    # 5. 提交（由调用方在事务上下文提交；此函数负责业务，不负责 commit）
-    await db.flush()
+    # 5. 提交
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "已购买过本章（并发重复请求被拦截）")
     return purchase, new_balance
 
 

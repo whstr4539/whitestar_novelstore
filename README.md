@@ -10,9 +10,9 @@
 
 | 层 | 技术 |
 |----|------|
-| 前端 | React 18 + Vite + React Router v6（纯 CSS 设计令牌，无重型 UI 库） |
+| 前端 | React 19 + Vite + React Router v7（纯 CSS 设计令牌，无重型 UI 库） |
 | 后端 | FastAPI + SQLAlchemy 2.0 (async) + asyncpg + JWT |
-| 数据库 | PostgreSQL 16（16 张表：事务 / 触发器 / 视图 / 索引） |
+| 数据库 | PostgreSQL 16（17 张表：事务 / 触发器 / 视图 / 索引） |
 | 缓存 | Redis 7（热榜缓存 / 章节缓存 / 月票榜 ZSET） |
 | 部署 | Docker Compose（postgres + redis + pgadmin） |
 
@@ -43,19 +43,24 @@ cd frontend && npm install && npm run dev
 
 | 账号 | 角色 | 可体验 |
 |------|------|--------|
-| `admin` | 管理员 | 公告发布 |
-| `author_zhang` | 作者 | 写作台发布章节（3 本作品） |
-| `reader_li` | 读者 | 余额 100 书币、已订阅章节，完整阅读/订阅/评论/打赏 |
+| `admin` | 管理员 | 公告发布/用户与作品管理 |
+| `author_zhang` | 作者 | 写作台发布章节（6 本作品） |
+| `author_wang` | 作者 | 写作台发布章节（6 本作品） |
+| `reader_li` | 读者 | 余额 2605 书币、已订阅 28 章，完整阅读/订阅/评论/打赏 |
+| `reader_chen` | 读者 | 余额 1378 书币、已订阅 28 章 |
+| `reader_zhao` | 读者 | 余额 117 书币、已订阅 28 章 |
 
-## 数据库设计（16 张表）
+> 演示数据由 `scripts/gen_seed_data.py` 生成（固定种子可复现）：实体数据 262 条（用户 6/分类 9/作品 12/章节 81/正文 81/评论 54/公告 3/订单 9/钱包 6），关联数据 294 条（收藏 27/阅读进度 27/月票 45/打赏 30/评分 27/订阅 84/点赞 36/分类关联 20），聚合字段（章数/字数/收藏/月票/均分/钱包余额）均由 SQL 回写校准，与明细严格一致。
 
-**核心 12 张**：`users` 用户 · `categories` 分类 · `novels` 作品 · `chapters` 章节（元信息） · `chapter_contents` 正文（1:1 拆分大字段） · `novel_category` 多对多 · `favorites` 书架 · `reading_history` 阅读进度（每书一条 UPSERT） · `comments` 本章说/书评（一表三用） · `wallet` 书币钱包（1:1） · `recharge_orders` 充值订单 · `chapter_purchases` 章节订阅（防重复扣费唯一约束）
+## 数据库设计（17 张表）
+
+**核心 13 张**：`users` 用户 · `categories` 分类 · `novels` 作品 · `chapters` 章节（元信息） · `chapter_contents` 正文（1:1 拆分大字段） · `novel_category` 多对多 · `favorites` 书架 · `reading_history` 阅读进度（每书一条 UPSERT） · `comments` 本章说/书评（一表三用） · `comment_likes` 评论点赞（唯一约束一人一赞） · `wallet` 书币钱包（1:1） · `recharge_orders` 充值订单 · `chapter_purchases` 章节订阅（防重复扣费唯一约束）
 
 **可选 4 张**：`tickets` 月票 · `rewards` 打赏 · `novel_reviews` 评分 · `notices` 公告
 
 建表/种子脚本：`db/init/01_schema.sql`、`db/init/02_seed.sql`（含触发器、月度收入视图）
 
-## 接口（34 个）
+## 接口（44 个）
 
 Swagger 文档：http://localhost:8000/docs
 
