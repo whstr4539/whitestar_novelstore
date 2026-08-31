@@ -14,11 +14,15 @@ db/backup/*.sql
 # PPT 生成与出图工作区（含大量中间产物，不入库）
 .ppt_work/
 
-# 课程提供的资料与模板（非本项目交付物，保留学生自己的展示 PPT）
+# 课程提供的资料与模板（非本项目交付物）
 docs/山大主题PPT1.pptx
 docs/数据库课程设计题目及要求-2026.pptx
 docs/示例-*.pdf
 docs/示例-*.pptx
+
+# 学生课堂展示/演示 PPT（不入库，避免答辩撞车与重复）
+docs/*课堂展示*.pptx
+docs/*演示*.pptx
 
 # ===== Python =====
 __pycache__/
