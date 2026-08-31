@@ -1,8 +1,8 @@
 /* 作者写作台：我的作品（含收益）| 发布章节 | 新建作品 | 修改章节 */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  apiAuthorStats, apiCategories, apiChapters, apiCreateNovel, apiMyNovels, apiNovelEarnings,
+  apiAuthorStats, apiCategories, apiChapters, apiCreateNovel, apiDeleteChapter, apiMyNovels, apiNovelEarnings,
   apiPublishChapter, apiUpdateChapter,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
@@ -34,6 +34,8 @@ export default function Author() {
   const [editNovelId, setEditNovelId] = useState('')
   const [chapters, setChapters] = useState([])
   const [editing, setEditing] = useState(null)   // 正在编辑的章节
+  // 编辑正文竞态防护：记录当前打开的章节 id，快速切换时丢弃旧响应
+  const openEditRef = useRef(null)
   const [eTitle, setETitle] = useState('')
   const [eContent, setEContent] = useState('')
   const [ePrice, setEPrice] = useState(0)
@@ -118,16 +120,35 @@ export default function Author() {
   }
 
   const startEdit = (c) => {
+    openEditRef.current = c.id
     setEditing(c)
     setETitle(c.title)
     setEContent('')
     setEPrice(Number(c.price))
     // 拉取正文（免费直读；若是收费章，作者本人免购）
-    apiReadForEdit(c.id).then((d) => setEContent(d.content)).catch(() => setEContent(''))
+    apiReadForEdit(c.id).then((d) => {
+      if (openEditRef.current !== c.id) return   // 已切到别的章节，丢弃旧响应
+      setEContent(d.content)
+    }).catch(() => { if (openEditRef.current === c.id) setEContent('') })
   }
 
   const cancelEdit = () => {
+    openEditRef.current = null
     setEditing(null); setETitle(''); setEContent(''); setEPrice(0)
+  }
+
+  // ---- 删除章节（软删除：目录下线） ----
+  const deleteChapter = async (c) => {
+    if (editing?.id === c.id) cancelEdit()
+    if (!window.confirm(`确定删除《${c.title}》第 ${c.chapter_no} 章？删除后将从目录下线，读者无法再阅读（已订阅不退款）。`)) return
+    try {
+      const d = await apiDeleteChapter(c.id)
+      flash(d.detail || '章节已删除')
+      loadChapters(editNovelId)
+      load()
+    } catch (e) {
+      flash(e.response?.data?.detail || '删除失败', true)
+    }
   }
 
   const saveEdit = async () => {
@@ -335,9 +356,12 @@ export default function Author() {
                       {c.word_count} 字 · {Number(c.price) > 0 ? `${c.price} 书币` : c.is_free ? '试读' : '免费'}
                     </span>
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => startEdit(c)}>
-                    {editing?.id === c.id ? '收起' : '编辑'}
-                  </button>
+                  <div className="edit-row-ops">
+                    <button className="btn btn-ghost btn-sm" onClick={() => startEdit(c)}>
+                      {editing?.id === c.id ? '收起' : '编辑'}
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => deleteChapter(c)}>删除</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -502,6 +526,7 @@ export default function Author() {
         .edit-row-no { font-size: var(--fs-12); color: var(--ink-500); white-space: nowrap; }
         .edit-row-title { font-size: var(--fs-14); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .edit-row-meta { font-size: var(--fs-12); color: var(--ink-500); white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+        .edit-row-ops { display: flex; gap: var(--space-2); flex-shrink: 0; }
         .edit-box {
           border: 1px solid var(--hairline);
           border-radius: var(--radius-lg);

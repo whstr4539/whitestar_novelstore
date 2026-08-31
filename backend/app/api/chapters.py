@@ -22,7 +22,7 @@ async def _get_chapter(db: AsyncSession, chapter_id: int) -> Chapter:
     chapter = await db.scalar(
         select(Chapter)
         .options(selectinload(Chapter.content))
-        .where(Chapter.id == chapter_id)
+        .where(Chapter.id == chapter_id, Chapter.status == 1)  # 已删除章节不可读
     )
     if chapter is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "章节不存在")

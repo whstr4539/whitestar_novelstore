@@ -277,13 +277,13 @@ CREATE TABLE notices (
 COMMENT ON TABLE notices IS '公告表';
 
 -- ============================================================
--- 触发器示例：新章节发布时自动更新 novels 的章数/字数
+-- 触发器示例：新章节发布时自动更新 novels 的章数/字数（仅统计未删除章节 status=1）
 -- ============================================================
 CREATE OR REPLACE FUNCTION fn_update_novel_stats() RETURNS TRIGGER AS $$
 BEGIN
     UPDATE novels
-       SET chapter_count = (SELECT COUNT(*) FROM chapters WHERE novel_id = NEW.novel_id),
-           word_count    = (SELECT COALESCE(SUM(word_count),0) FROM chapters WHERE novel_id = NEW.novel_id),
+       SET chapter_count = (SELECT COUNT(*) FROM chapters WHERE novel_id = NEW.novel_id AND status = 1),
+           word_count    = (SELECT COALESCE(SUM(word_count),0) FROM chapters WHERE novel_id = NEW.novel_id AND status = 1),
            updated_at    = now()
      WHERE id = NEW.novel_id;
     RETURN NEW;

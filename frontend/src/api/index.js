@@ -119,6 +119,9 @@ export const apiPublishChapter = (novelId, data) =>
 export const apiUpdateChapter = (chapterId, data) =>
   client.put(`/author/chapters/${chapterId}`, data).then((r) => r.data)
 
+export const apiDeleteChapter = (chapterId) =>
+  client.delete(`/author/chapters/${chapterId}`).then((r) => r.data)
+
 export const apiNovelEarnings = (novelId) =>
   client.get(`/author/novels/${novelId}/earnings`).then((r) => r.data)
 

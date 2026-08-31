@@ -1,6 +1,6 @@
 /* 个人中心：资料编辑 | 可点击统计（收藏/在读/评论）| 评论历史 | 角色入口
    设计依据 novel-reading-ui skill：单卡片、hairline 分区、无 emoji */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   apiBookshelf, apiCancelOrder, apiHistory, apiMyComments, apiMyNovels, apiOrderStatus, apiPayOrder, apiRecharge, apiUpdateProfile, apiWallet,
@@ -36,6 +36,8 @@ export default function Profile() {
   const [cashier, setCashier] = useState(null)   // { order_no, amount, coins, pay_url }
   const [paying, setPaying] = useState(false)    // 等待“第三方”处理中
   const [payResult, setPayResult] = useState(null) // { status, balance_after, coins }
+  // 支付轮询代次：每开新单/关闭/卸载递增，旧轮询据此停止，避免覆盖新订单
+  const payGenRef = useRef(0)
 
   const load = () => {
     setLoading(true)
@@ -52,6 +54,9 @@ export default function Profile() {
   }
 
   useEffect(() => { load() }, [user])
+
+  // 卸载时使支付轮询失效，避免卸载后 setState
+  useEffect(() => () => { payGenRef.current++ }, [])
 
   const flash = (m, isErr = false) => {
     setMsg({ text: m, isErr })
@@ -74,10 +79,12 @@ export default function Profile() {
   const confirmPay = async () => {
     setPaying(true)
     setPayResult(null)
+    const gen = ++payGenRef.current
     try {
       await apiPayOrder(cashier.order_no)          // 受理：立即返回 processing
       // 轮询订单状态（渠道 3 秒后回调，轮询直到终态）
       const poll = async (tries) => {
+        if (gen !== payGenRef.current) return       // 已开新单/关闭/卸载，停止旧轮询
         if (tries <= 0) {
           setPayResult({ status: 'failed', detail: '支付结果确认超时，请稍后在充值记录中查看' })
           setPaying(false)
@@ -85,6 +92,7 @@ export default function Profile() {
         }
         const d = await apiOrderStatus(cashier.order_no)
         if (d.status === 'success' || d.status === 'failed' || d.status === 'cancelled') {
+          if (gen !== payGenRef.current) return
           setPayResult(d)
           setWallet(await apiWallet())
           setPaying(false)
@@ -94,6 +102,7 @@ export default function Profile() {
       }
       poll(15)                                      // 最多等 18 秒（> 3 秒渠道耗时）
     } catch (e) {
+      if (gen !== payGenRef.current) return
       setPayResult({ status: 'failed', detail: e.response?.data?.detail || '支付受理失败' })
       setPaying(false)
     }
@@ -113,6 +122,7 @@ export default function Profile() {
   }
 
   const closeCashier = () => {
+    payGenRef.current++                // 使进行中的轮询失效，避免关闭后仍 setState
     setCashier(null)
     setPayResult(null)
     setPaying(false)

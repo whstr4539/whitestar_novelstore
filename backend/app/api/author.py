@@ -235,6 +235,8 @@ async def update_chapter(
     chapter = await db.get(Chapter, chapter_id)
     if chapter is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "章节不存在")
+    if chapter.status == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "章节已删除，无法编辑")
     novel = await db.get(Novel, chapter.novel_id)
     _check_owner(novel, user)
 
@@ -263,13 +265,54 @@ async def update_chapter(
         changed = True
 
     if changed:
-        # 重新聚合全书总字数（INSERT 触发器只覆盖发布章节场景）
+        # 重新聚合全书总字数（INSERT 触发器只覆盖发布章节场景；仅统计未删除章节）
         novel.word_count = await db.scalar(
             select(func.coalesce(func.sum(Chapter.word_count), 0)).where(
-                Chapter.novel_id == novel.id
+                Chapter.novel_id == novel.id, Chapter.status == 1
             )
         )
         await db.commit()
         # 正文/价格变化：清章节缓存
         await delete_keys(redis, cache_key("chapter", chapter_id), cache_key("novel", chapter.novel_id))
     return Message(detail="章节已更新")
+
+
+@router.delete("/chapters/{chapter_id}", response_model=Message, summary="删除章节（软删除：目录下线，保留订阅/进度历史）")
+async def delete_chapter(
+    chapter_id: int,
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    user: User = Depends(get_current_author),
+):
+    """软删除章节：置 status=0，从目录隐藏并在阅读接口返回不可用；保留订阅与进度历史。"""
+    chapter = await db.get(Chapter, chapter_id)
+    if chapter is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "章节不存在")
+    novel = await db.get(Novel, chapter.novel_id)
+    _check_owner(novel, user)
+
+    if chapter.status == 0:
+        # 幂等：已删除章节再次删除视为成功
+        return Message(detail="章节已删除")
+
+    chapter.status = 0
+    # 重算全书章数/字数（与触发器口径一致，仅统计未删除章节）
+    novel.chapter_count = await db.scalar(
+        select(func.count()).select_from(Chapter).where(
+            Chapter.novel_id == novel.id, Chapter.status == 1
+        )
+    )
+    novel.word_count = await db.scalar(
+        select(func.coalesce(func.sum(Chapter.word_count), 0)).where(
+            Chapter.novel_id == novel.id, Chapter.status == 1
+        )
+    )
+    await db.commit()
+    # 清章节/详情/列表缓存，目录立即生效
+    await delete_keys(
+        redis,
+        cache_key("chapter", chapter_id),
+        cache_key("novel", novel.id),
+        cache_key("novels", "hot"),
+    )
+    return Message(detail="章节已删除")

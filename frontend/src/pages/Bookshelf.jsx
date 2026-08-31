@@ -1,28 +1,36 @@
 /* 书架：收藏 + 阅读历史 两个 Tab */
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { apiBookshelf, apiHistory, apiRemoveFavorite } from '../api'
 import NovelCard from '../components/NovelCard'
 
 export default function Bookshelf() {
   const [params] = useSearchParams()
+  const navigate = useNavigate()
   const [tab, setTab] = useState(params.get('tab') === 'history' ? 'history' : 'shelf')
   const [shelf, setShelf] = useState([])
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
+  const [msg, setMsg] = useState('')
 
   const load = () => {
     setLoading(true)
     Promise.all([apiBookshelf(), apiHistory()])
       .then(([s, h]) => { setShelf(s.items); setHistory(h.items) })
+      .catch(() => setMsg('加载失败，请稍后重试'))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
 
   const remove = async (id) => {
-    await apiRemoveFavorite(id)
-    load()
+    try {
+      await apiRemoveFavorite(id)
+      setMsg('')
+      load()
+    } catch (e) {
+      setMsg(e.response?.data?.detail || '移出书架失败')
+    }
   }
 
   const list = tab === 'shelf' ? shelf : history
@@ -33,6 +41,8 @@ export default function Bookshelf() {
         <h1 className="page-title">我的书架</h1>
         <span className="page-sub">{shelf.length} 本收藏 · {history.length} 本在读</span>
       </div>
+
+      {msg && <div className="alert alert-error">{msg}</div>}
 
       <div className="shelf-tabs">
         <button className={`tab ${tab === 'shelf' ? 'tab-active' : ''}`} onClick={() => setTab('shelf')}>
@@ -59,6 +69,12 @@ export default function Bookshelf() {
                 <button className="btn btn-danger-ghost shelf-remove"
                   onClick={() => remove(item.novel.id)}>
                   移出
+                </button>
+              )}
+              {tab === 'history' && item.chapter_id && (
+                <button className="btn btn-primary shelf-continue"
+                  onClick={() => navigate(`/reader/${item.chapter_id}`)}>
+                  续读
                 </button>
               )}
             </div>
@@ -95,7 +111,8 @@ export default function Bookshelf() {
         .shelf-item {
           position: relative;
         }
-        .shelf-remove {
+        .shelf-remove,
+        .shelf-continue {
           position: absolute;
           right: 16px;
           top: 50%;
@@ -105,7 +122,7 @@ export default function Bookshelf() {
           z-index: 2;
         }
         @media (max-width: 768px) {
-          .shelf-remove { display: none; }
+          .shelf-remove, .shelf-continue { display: none; }
         }
       `}</style>
     </div>
