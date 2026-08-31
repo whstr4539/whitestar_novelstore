@@ -2,12 +2,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_user
 from app.database import get_db
-from app.models import Favorite, Novel, ReadingHistory, User
+from app.models import Chapter, Favorite, Novel, ReadingHistory, User
 from app.schemas import BookshelfItem, BookshelfOut, Message, NovelOut, ProgressIn
 
 router = APIRouter(prefix="/api/bookshelf", tags=["书架"])
@@ -50,7 +51,12 @@ async def add_favorite(
     db.add(Favorite(user_id=user.id, novel_id=novel_id))
     # 收藏数 +1
     novel.total_favorites += 1
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # 并发重复收藏：唯一约束兜底
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "已在书架中")
     return Message(detail="收藏成功")
 
 
@@ -98,6 +104,14 @@ async def update_progress(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # 校验小说与章节存在，且章节属于该小说（避免 FK 500 与错位进度）
+    novel = await db.get(Novel, data.novel_id)
+    if novel is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在")
+    chapter = await db.get(Chapter, data.chapter_id)
+    if chapter is None or chapter.novel_id != data.novel_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "章节不存在或不属于该小说")
+
     # UPSERT：同一用户+同一本书 覆盖进度
     await db.execute(
         pg_insert(ReadingHistory)

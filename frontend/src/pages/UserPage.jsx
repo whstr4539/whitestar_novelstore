@@ -1,7 +1,7 @@
 /* 用户公开主页：头像 | 基本信息 | 创作统计
    从评论/评分/打赏的用户昵称点入，无需登录即可查看 */
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { apiUserProfile } from '../api'
 
 export default function UserPage() {

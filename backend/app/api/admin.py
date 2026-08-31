@@ -1,12 +1,15 @@
 """管理后台接口（仅管理员）：统计概览 / 用户管理 / 作品管理"""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from redis.asyncio import Redis
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_admin
 from app.database import get_db
 from app.models import Chapter, ChapterPurchase, Novel, RechargeOrder, User
-from app.schemas import Message, UserOut
+from app.redis_client import get_redis
+from app.schemas import Message, NovelStatusIn, UserOut, UserStatusIn
+from app.services.cache import cache_key, delete_keys
 
 router = APIRouter(prefix="/api/admin", tags=["管理后台"])
 
@@ -99,7 +102,7 @@ async def admin_users(
 @router.put("/users/{user_id}/status", response_model=Message, summary="封禁/解封用户")
 async def admin_set_user_status(
     user_id: int,
-    body: dict,
+    data: UserStatusIn,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin),
 ):
@@ -108,7 +111,7 @@ async def admin_set_user_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
     if target.id == user.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "不能封禁自己")
-    target.status = int(body.get("status", 1))
+    target.status = data.status
     await db.commit()
     return Message(detail="已封禁" if target.status == 0 else "已解封")
 
@@ -149,17 +152,17 @@ async def admin_novels(
 @router.put("/novels/{novel_id}/status", response_model=Message, summary="下架/恢复作品")
 async def admin_set_novel_status(
     novel_id: int,
-    body: dict,
+    data: NovelStatusIn,
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     user: User = Depends(get_current_admin),
 ):
     novel = await db.get(Novel, novel_id)
     if novel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "作品不存在")
-    new_status = body.get("status", "banned")
-    if new_status not in ("serializing", "finished", "banned"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "非法状态值")
-    novel.status = new_status
+    novel.status = data.status
     await db.commit()
+    # 清详情/列表缓存：下架/恢复后立即生效（缓存失效失败不影响主流程）
+    await delete_keys(redis, cache_key("novel", novel_id), cache_key("novels", "hot"))
     labels = {"serializing": "恢复连载", "finished": "标记完结", "banned": "已下架"}
-    return Message(detail=labels[new_status])
+    return Message(detail=labels[novel.status])

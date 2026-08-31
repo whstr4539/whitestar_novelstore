@@ -1,6 +1,7 @@
 """认证接口：注册 / 登录 / 当前用户"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -35,7 +36,12 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
     # 注册即开通钱包（0 书币）
     db.add(Wallet(user_id=user.id, balance=0))
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # 并发同名/同邮箱注册：唯一约束兜底
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "用户名或邮箱已被注册")
     await db.refresh(user)
 
     token = create_access_token(user.id, user.role)

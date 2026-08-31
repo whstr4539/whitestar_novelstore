@@ -362,3 +362,16 @@ class ProgressIn(BaseModel):
     novel_id: int
     chapter_id: int
     progress: float = Field(ge=0, le=100)
+
+
+# ---------- 管理操作 ----------
+class UserStatusIn(BaseModel):
+    """用户封禁/解封状态：0封禁 1正常"""
+
+    status: int = Field(ge=0, le=1)
+
+
+class NovelStatusIn(BaseModel):
+    """作品状态：serializing连载中 finished完结 banned下架"""
+
+    status: Literal["serializing", "finished", "banned"]

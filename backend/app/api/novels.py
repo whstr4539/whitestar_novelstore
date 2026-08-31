@@ -96,6 +96,9 @@ async def get_novel(
 
     cached = await get_json(redis, cache_key("novel", novel_id))
     if cached is not None:
+        # 缓存命中仍校验下架状态，避免下架作品在 TTL 内可见
+        if cached.get("status") == "banned":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在或已下架")
         background_tasks.add_task(_bump_views)
         return cached
 
@@ -124,8 +127,8 @@ async def get_chapters(novel_id: int, db: AsyncSession = Depends(get_db)):
     from app.models import Chapter
 
     novel = await db.get(Novel, novel_id)
-    if novel is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在")
+    if novel is None or novel.status == "banned":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在或已下架")
     chapters = (
         await db.scalars(
             select(Chapter).where(Chapter.novel_id == novel_id, Chapter.status == 1).order_by(Chapter.chapter_no)
