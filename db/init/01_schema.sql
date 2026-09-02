@@ -277,22 +277,36 @@ CREATE TABLE notices (
 COMMENT ON TABLE notices IS '公告表';
 
 -- ============================================================
--- 触发器示例：新章节发布时自动更新 novels 的章数/字数（仅统计未删除章节 status=1）
+-- 触发器示例：章节增/改/删时自动更新 novels 的章数/字数（仅统计未删除章节 status=1）
+-- 覆盖 INSERT（发布）、UPDATE（改字数/软删 status=0）、DELETE（物理删除），
+-- 否则作者后台删章/改章后 novels 聚合字段会与明细脱节
 -- ============================================================
 CREATE OR REPLACE FUNCTION fn_update_novel_stats() RETURNS TRIGGER AS $$
+DECLARE
+    nid BIGINT := CASE WHEN TG_OP = 'DELETE' THEN OLD.novel_id ELSE NEW.novel_id END;
 BEGIN
     UPDATE novels
-       SET chapter_count = (SELECT COUNT(*) FROM chapters WHERE novel_id = NEW.novel_id AND status = 1),
-           word_count    = (SELECT COALESCE(SUM(word_count),0) FROM chapters WHERE novel_id = NEW.novel_id AND status = 1),
+       SET chapter_count = (SELECT COUNT(*) FROM chapters WHERE novel_id = nid AND status = 1),
+           word_count    = (SELECT COALESCE(SUM(word_count),0) FROM chapters WHERE novel_id = nid AND status = 1),
            updated_at    = now()
-     WHERE id = NEW.novel_id;
-    RETURN NEW;
+     WHERE id = nid;
+    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_chapter_insert ON chapters;
 CREATE TRIGGER trg_chapter_insert
     AFTER INSERT ON chapters
+    FOR EACH ROW EXECUTE FUNCTION fn_update_novel_stats();
+
+DROP TRIGGER IF EXISTS trg_chapter_update ON chapters;
+CREATE TRIGGER trg_chapter_update
+    AFTER UPDATE ON chapters
+    FOR EACH ROW EXECUTE FUNCTION fn_update_novel_stats();
+
+DROP TRIGGER IF EXISTS trg_chapter_delete ON chapters;
+CREATE TRIGGER trg_chapter_delete
+    AFTER DELETE ON chapters
     FOR EACH ROW EXECUTE FUNCTION fn_update_novel_stats();
 
 -- ============================================================

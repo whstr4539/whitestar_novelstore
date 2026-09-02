@@ -4,8 +4,8 @@
 （或直接运行：python scripts/gen_seed_data.py，自动写入 db/init/02_seed.sql）
 
 生成规模：
-- 实体数据：用户 6 · 分类 9 · 作品 12 · 章节 81 · 正文 81 · 评论 55 · 公告 3 · 订单 10 · 钱包 6 = 263 条
-- 关联数据：分类关联 12 · 收藏 27 · 阅读进度 27 · 月票 45 · 打赏 30 · 评分 27 · 订阅 86 · 点赞 36 = 290 条
+- 实体数据：用户 6 · 分类 9 · 作品 12 · 章节 81 · 正文 81 · 评论 54 · 公告 3 · 订单 9 · 钱包 6 = 261 条
+- 关联数据：分类关联 20 · 收藏 27 · 阅读进度 27 · 月票 45 · 打赏 30 · 评分 27 · 订阅 84 · 点赞 36 = 296 条
 
 特点：
 - 固定随机种子，重复生成结果一致
@@ -94,7 +94,7 @@ def chapter_word_count(s) -> int:
 sql = []
 sql.append("-- ============================================================")
 sql.append("-- 种子数据（由 scripts/gen_seed_data.py 生成，勿手改）")
-sql.append("-- 实体数据 263 条；关联数据 290 条；全部账号密码 123456")
+sql.append("-- 实体数据 261 条；关联数据 296 条；全部账号密码 123456")
 sql.append("-- ============================================================")
 sql.append("\\c novel_db")
 sql.append("")
@@ -132,7 +132,7 @@ sql.append(
 sql.append("")
 
 # ---- 小说-分类多对多
-sql.append("-- ---------- 4. 小说-分类关联（12 条） ----------")
+sql.append("-- ---------- 4. 小说-分类关联（20 条：叶子分类 + 其顶级分类） ----------")
 nc_rows = [f"({nid}, {CAT_ID[cat]})" for i, (title, *_) in enumerate(NOVELS)
            for nid, cat in [(i + 1, NOVELS[i][2])]]
 # 每书 2 条：叶子分类 + 其顶级分类（无子级的悬疑只 1 条）
@@ -215,8 +215,8 @@ sql.append("INSERT INTO wallet (user_id, balance, total_recharged) VALUES\n" +
            ", ".join(f"({uid}, 0, 0)" for uid in range(1, 7)) + ";")
 sql.append("")
 
-# ---- 充值订单（10 条：读者 3 人历史订单）
-sql.append("-- ---------- 8. 充值订单（10 条：3 位读者的历史充值） ----------")
+# ---- 充值订单（9 条：读者 3 人历史订单）
+sql.append("-- ---------- 8. 充值订单（9 条：3 位读者的历史充值） ----------")
 order_rows = []
 ord_no = 1000
 ORDER_PLAN = [
@@ -227,9 +227,11 @@ ORDER_PLAN = [
 for uid, amt in ORDER_PLAN:
     ord_no += 1
     method = random.choice(["alipay", "wechat", "mock"])
+    days_ago = random.randint(1, 90)
+    # 支付时间必须晚于下单时间（种子不允许出现 paid_at < created_at 的时间倒挂）
     order_rows.append(
         f"('R2024{25000 + ord_no}', {uid}, {amt}.00, {amt * 10}.00, '{method}', 'success', "
-        f"now() - interval '{random.randint(1, 90)} days', now() - interval '{random.randint(1, 90)} days')"
+        f"now() - interval '{days_ago} days', now() - interval '{days_ago} days' + interval '30 minutes')"
     )
 sql.append(
     "INSERT INTO recharge_orders (order_no, user_id, amount, coins, payment_method, status, created_at, paid_at) VALUES\n"
@@ -298,8 +300,8 @@ for uid in READER_IDS:
 sql.append("INSERT INTO novel_reviews (user_id, novel_id, rating, content, created_at) VALUES\n" + ",\n".join(review_rows) + ";")
 sql.append("")
 
-# ---- 评论（55 条：本章说 32 + 书评 13 + 回复 10，楼层引用显式 id）
-sql.append("-- ---------- 14. 评论（55 条：本章说/书评/楼中楼） ----------")
+# ---- 评论（54 条：本章说 32 + 书评 12 + 回复 10，楼层引用显式 id）
+sql.append("-- ---------- 14. 评论（54 条：本章说/书评/楼中楼） ----------")
 comment_rows = []
 cid = 0
 top_comments = []  # (顶层评论id, novel_id)，供回复引用
@@ -322,7 +324,8 @@ for nid in range(1, 13):
     gch = sum(CHAPTER_PLAN[: nid - 1]) + chapter_no
     top_comments.append((cid, nid))
     comment_rows.append(
-        f"({uid}, {nid}, {gch}, NULL, {random.randint(1, 40)}, '{random.choice(SAY_TEXTS)}', now() - interval '{random.randint(1, 30)} days')"
+        # paragraph_pos 为段评定位，正文每章 3~5 段，取值必须落在实际段数范围内
+        f"({uid}, {nid}, {gch}, NULL, {random.randint(1, 5)}, '{random.choice(SAY_TEXTS)}', now() - interval '{random.randint(1, 30)} days')"
     )
 for _ in range(20):
     cid += 1
@@ -332,7 +335,7 @@ for _ in range(20):
     gch = sum(CHAPTER_PLAN[: nid - 1]) + chapter_no
     top_comments.append((cid, nid))
     comment_rows.append(
-        f"({uid}, {nid}, {gch}, NULL, {random.randint(1, 40)}, '{random.choice(SAY_TEXTS)}', now() - interval '{random.randint(1, 30)} days')"
+        f"({uid}, {nid}, {gch}, NULL, {random.randint(1, 5)}, '{random.choice(SAY_TEXTS)}', now() - interval '{random.randint(1, 30)} days')"
     )
 for nid in range(1, 13):
     # 每本书至少 1 条书评
@@ -376,13 +379,40 @@ sql.append("")
 
 # ---- 聚合一致性
 sql.append("-- ============================================================")
-sql.append("-- 聚合一致性：收藏数 / 月票数 / 均分 / 章节统计 由明细聚合回写")
+sql.append("-- 聚合一致性：收藏数 / 月票数 / 均分 / 评论点赞数 / VIP 标识 由明细聚合回写")
 sql.append("-- ============================================================")
 sql.append("""
 UPDATE novels n SET
   total_favorites = (SELECT COUNT(*) FROM favorites f WHERE f.novel_id = n.id),
   total_tickets   = (SELECT COUNT(*) FROM tickets t WHERE t.novel_id = n.id),
   score           = COALESCE((SELECT ROUND(AVG(rating), 1) FROM novel_reviews r WHERE r.novel_id = n.id), 0);
+""")
+
+# 评论赞数回写：comment_likes 明细决定 comments.likes（否则列表全部显示 0 赞）
+sql.append("-- 评论赞数与点赞明细一致")
+sql.append("""
+UPDATE comments c SET
+  likes = (SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = c.id);
+""")
+
+# is_vip 校准：含付费章节（price>0 且非试读）的作品视为 VIP 作品
+sql.append("-- 作品 is_vip 与付费章节对齐")
+sql.append("""
+UPDATE novels n SET
+  is_vip = EXISTS (SELECT 1 FROM chapters c WHERE c.novel_id = n.id AND c.status = 1
+                     AND c.price > 0 AND c.is_free = FALSE);
+""")
+
+# 段评定位钳制：paragraph_pos 不得超出该章正文实际段数（正文每章 3~5 段）
+sql.append("-- 段评定位钳制到各章实际段数内")
+sql.append(r"""
+UPDATE comments c
+   SET paragraph_pos = 1 + ((c.paragraph_pos - 1) % seg.segs)
+  FROM (SELECT cc.chapter_id,
+               GREATEST(LENGTH(cc.content) - LENGTH(REPLACE(cc.content, E'\n', '')) + 1, 1) AS segs
+          FROM chapter_contents cc) seg
+ WHERE c.chapter_id = seg.chapter_id
+   AND c.paragraph_pos > seg.segs;
 """)
 sql.append("")
 
@@ -403,8 +433,8 @@ UPDATE wallet w SET
 """)
 sql.append("")
 
-# ---- 订阅（86 条）：放在钱包平衡之后会破坏余额公式 → 这里追加购买记录并重新平衡余额
-sql.append("-- ---------- 17. 章节订阅（86 条：3 读者购买付费章节） ----------")
+# ---- 订阅（84 条：3 读者各 28 章付费章节）
+sql.append("-- ---------- 17. 章节订阅（84 条：3 读者购买付费章节） ----------")
 purchase_rows = []
 paid_chapters = []  # (user_id, 全局章节号)
 for uid in READER_IDS:

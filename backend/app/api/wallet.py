@@ -181,6 +181,12 @@ async def pay_order(order_no: str, data: PayIn, background_tasks: BackgroundTask
         await db.commit()
         raise HTTPException(status.HTTP_410_GONE, "订单已超时关闭")
 
+    # 受理检查完成，先提交事务释放行锁再调度后台任务。
+    # 关键：FastAPI 中 BackgroundTasks 在依赖清理（get_db 的 session.close）之前执行，
+    # 若此处仍持有 FOR UPDATE 行锁，_process_callback 开新会话回调会永久等锁（死锁），
+    # 订单卡在 pending 直到前端轮询超时，且每次请求泄漏一个连接池连接。
+    await db.commit()
+
     # 模拟渠道异步处理：响应结束后 3 秒，后台任务回调商户 notify
     background_tasks.add_task(_simulate_channel, order_no)
 
@@ -214,9 +220,14 @@ async def order_status(order_no: str, db: AsyncSession = Depends(get_db),
     order = await db.scalar(select(RechargeOrder).where(RechargeOrder.order_no == order_no))
     if order is None or order.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "充值订单不存在")
+    # 终态时回填钱包余额：回调与入账在同一事务提交，读到 success 即入账已完成
+    balance_after = None
+    if order.status != "pending":
+        wallet = await db.scalar(select(Wallet).where(Wallet.user_id == user.id))
+        balance_after = float(wallet.balance) if wallet else 0.0
     return OrderOut(order_no=order.order_no, status=order.status,
                     amount=float(order.amount), coins=float(order.coins),
-                    balance_after=None)
+                    balance_after=balance_after)
 
 
 @router.get("/bills", response_model=BillsOut, summary="账单流水（充值/订阅/打赏，统一格式）")

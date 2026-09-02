@@ -7,6 +7,7 @@ import {
   apiRemoveFavorite, apiReviews, apiReward, apiRewards, apiVoteTicket, apiWallet,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
+import { useConfirm } from '../components/ConfirmDialog'
 import { Cover, StatusBadge } from '../components/NovelCard'
 import ChapterList from '../components/ChapterList'
 
@@ -14,6 +15,7 @@ export default function NovelDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const confirmDialog = useConfirm()
 
   const [novel, setNovel] = useState(null)
   const [chapters, setChapters] = useState([])
@@ -39,17 +41,22 @@ export default function NovelDetail() {
   // 打赏表单
   const [rewardOpen, setRewardOpen] = useState(false)
   const [rewardAmount, setRewardAmount] = useState(10)
+  const [rewardMsg, setRewardMsg] = useState('')
   // 月票：每个账号每书一票，投过后本地禁用按钮
   const [voted, setVoted] = useState(false)
   // 续读：当前用户对该书的最近阅读章节（无则第一章）
   const [resumeChapterId, setResumeChapterId] = useState(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    // 切换作品时重置交互状态，避免跨书残留（月票/评分/评论回复/打赏）
+  // 仅切换作品时重置交互状态，避免跨书残留（月票/评分/评论回复/打赏）。
+  // 注意不能放在 load() 里：投票/评分成功后的 load() 会把「已投月票」等状态复位
+  useEffect(() => {
     setVoted(false); setRating(0); setReviewText('')
     setCommentText(''); setReplyTo(null); setReplyText(''); setRepliesOpen({}); setRepliesMap({})
-    setRewardOpen(false); setRewardAmount(10)
+    setRewardOpen(false); setRewardAmount(10); setRewardMsg('')
+  }, [id])
+
+  const load = useCallback(async () => {
+    setLoading(true)
     try {
       const [n, ch, cm, rv, rw] = await Promise.all([
         apiNovel(id), apiChapters(id), apiComments(id), apiReviews(id), apiRewards(id),
@@ -126,15 +133,26 @@ export default function NovelDetail() {
       const list = await apiCommentReplies(cid)
       setRepliesMap((m) => ({ ...m, [cid]: list }))
       setRepliesOpen((m) => ({ ...m, [cid]: true }))
-    } catch (e) { flash(e.response?.data?.detail || '回复失败') }
+    } catch (e) { flash(e.response?.status === 401 ? '请先登录' : e.response?.data?.detail || '回复失败') }
   }
 
-  const removeComment = async (cid) => {
-    if (!window.confirm('确定删除这条评论？')) return
+  const removeComment = async (cid, parentId = null) => {
+    const ok = await confirmDialog({
+      title: '删除评论',
+      message: '确定删除这条评论？删除后不可恢复。',
+      confirmText: '删除',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await apiDeleteComment(cid)
       flash('评论已删除')
       setComments(await apiComments(id))
+      if (parentId) {
+        // 楼中楼：同步刷新父评论的回复列表，被删回复立即消失
+        const list = await apiCommentReplies(parentId)
+        setRepliesMap((m) => ({ ...m, [parentId]: list }))
+      }
     } catch (e) { flash(e.response?.data?.detail || '删除失败') }
   }
 
@@ -150,7 +168,13 @@ export default function NovelDetail() {
   }
 
   const removeReview = async (rid) => {
-    if (!window.confirm('确定删除这条评分？删除后作品均分将重新计算')) return
+    const ok = await confirmDialog({
+      title: '删除评分',
+      message: '确定删除这条评分？删除后作品均分将重新计算。',
+      confirmText: '删除',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await apiDeleteReview(id, rid)
       flash('评分已删除')
@@ -161,9 +185,10 @@ export default function NovelDetail() {
 
   const submitReward = async () => {
     try {
-      await apiReward(id, rewardAmount, '')
-      flash(`已打赏 ${rewardAmount} 书币，感谢支持！`)
-      setRewardOpen(false)
+      const message = rewardMsg.trim()
+      await apiReward(id, rewardAmount, message || null)
+      flash(`已打赏 ${rewardAmount} 书币${message ? '，留言已送达' : ''}，感谢支持！`)
+      setRewardOpen(false); setRewardMsg('')
       setWallet(await apiWallet())
       setRewards(await apiRewards(id))
     } catch (e) { flash(e.response?.data?.detail || '打赏失败') }
@@ -230,7 +255,7 @@ export default function NovelDetail() {
             <button className={`btn ${favorited ? 'btn-primary' : 'btn-ghost'}`} onClick={toggleFavorite}>
               {favorited ? '✓ 已在书架' : '加入书架'}
             </button>
-            <button className="btn btn-ghost" onClick={() => setRewardOpen(!rewardOpen)}>打赏</button>
+            <button className="btn btn-ghost" onClick={() => { setRewardOpen(!rewardOpen); setRewardMsg('') }}>打赏</button>
             <button className="btn btn-ghost" onClick={vote} disabled={voted}>
               {voted ? '已投月票' : '投月票'}
             </button>
@@ -245,6 +270,12 @@ export default function NovelDetail() {
                   <button key={v} className={`btn btn-ghost ${rewardAmount === v ? 'reward-active' : ''}`}
                     onClick={() => setRewardAmount(v)}>{v}</button>
                 ))}
+              </div>
+              <input className="field reward-msg" placeholder="写句想对作者说的话（可选，200 字内）"
+                maxLength={200} value={rewardMsg}
+                onChange={(e) => setRewardMsg(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitReward()} />
+              <div className="reward-row">
                 <button className="btn btn-primary" onClick={submitReward}>确认打赏</button>
               </div>
             </div>
@@ -304,9 +335,11 @@ export default function NovelDetail() {
                   <button className={`comment-like ${c.liked ? 'comment-like-on' : ''}`} onClick={() => like(c.id)}>
                     {c.liked ? '已赞' : '赞'} {c.likes}
                   </button>
-                  <button className="comment-like" onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyText('') }}>
-                    {replyTo === c.id ? '取消回复' : '回复'}
-                  </button>
+                  {user && (
+                    <button className="comment-like" onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyText('') }}>
+                      {replyTo === c.id ? '取消回复' : '回复'}
+                    </button>
+                  )}
                   <button className="comment-like" onClick={() => toggleReplies(c.id)}>
                     {repliesOpen[c.id] ? '收起回复' : '展开回复'}
                   </button>
@@ -324,14 +357,14 @@ export default function NovelDetail() {
                   </div>
                 )}
 
-                {repliesOpen[c.id] !== undefined && (
+                {repliesOpen[c.id] && (
                   <div className="reply-list">
                     {(repliesMap[c.id] || []).map((r) => (
                       <div key={r.id} className="reply-item">
                         <Link to={`/users/${r.user_id}`} className="reply-user">{r.user?.nickname}</Link>
                         <span className="reply-text">{r.content}</span>
                         {(user?.role === 'admin' || user?.id === r.user_id) && (
-                          <button className="comment-like comment-del" onClick={() => removeComment(r.id)}>删除</button>
+                          <button className="comment-like comment-del" onClick={() => removeComment(r.id, c.id)}>删除</button>
                         )}
                       </div>
                     ))}
@@ -444,6 +477,7 @@ export default function NovelDetail() {
           max-width: 420px;
         }
         .reward-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+        .reward-msg { margin-top: var(--space-3); margin-bottom: var(--space-3); }
         .reward-active { border-color: var(--accent) !important; color: var(--accent) !important; }
 
         .detail-tabs {

@@ -1,6 +1,7 @@
 /* 应用入口：路由 + 布局 */
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './stores/AuthContext'
+import ConfirmProvider from './components/ConfirmDialog'
 import Header from './components/Header'
 import Home from './pages/Home'
 import NovelDetail from './pages/NovelDetail'
@@ -58,7 +59,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Layout />
+        <ConfirmProvider>
+          <Layout />
+        </ConfirmProvider>
       </AuthProvider>
     </BrowserRouter>
   )

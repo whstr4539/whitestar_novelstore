@@ -34,6 +34,7 @@ export default function Reader() {
 
   const loadChapter = useCallback(async (cid) => {
     setLoading(true); setError(''); setBlocked(false)
+    setDanmaku([])   // 清掉上一章的本章说，避免切章瞬间残留
     try {
       const d = await apiReadChapter(cid)
       setChapter(d.chapter)

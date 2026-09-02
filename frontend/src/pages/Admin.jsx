@@ -6,9 +6,11 @@ import {
   apiAdminUsers, apiCreateNotice, apiDeleteComment, apiDeleteNotice, apiNotices,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
+import { useConfirm } from '../components/ConfirmDialog'
 
 export default function Admin() {
   const { user } = useAuth()
+  const confirmDialog = useConfirm()
   const [tab, setTab] = useState('stats')
   const [msg, setMsg] = useState('')
 
@@ -314,7 +316,13 @@ function CommentsTab({ flash }) {
   useEffect(() => { load() }, []) // eslint-disable-line
 
   const remove = async (c) => {
-    if (!window.confirm(`删除 ${c.user?.nickname} 的这条评论？\n“${c.content.slice(0, 30)}…”`)) return
+    const ok = await confirmDialog({
+      title: '删除评论',
+      message: `删除 ${c.user?.nickname} 的这条评论？\n「${c.content.slice(0, 30)}…」`,
+      confirmText: '删除',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await apiDeleteComment(c.id)
       flash('评论已删除')

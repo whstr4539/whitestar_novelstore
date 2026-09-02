@@ -48,7 +48,7 @@ export default function Header() {
         <form className="search" onSubmit={submitSearch}>
           <input
             className="field search-input"
-            placeholder="搜索书名 / 简介"
+            placeholder="搜索书名 / 作者 / 简介"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
           />

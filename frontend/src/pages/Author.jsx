@@ -6,10 +6,12 @@ import {
   apiPublishChapter, apiUpdateChapter,
 } from '../api'
 import { useAuth } from '../stores/AuthContext'
+import { useConfirm } from '../components/ConfirmDialog'
 
 export default function Author() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const confirmDialog = useConfirm()
 
   const [novels, setNovels] = useState([])
   const [earnings, setEarnings] = useState({})   // novel_id -> 收益统计
@@ -139,8 +141,14 @@ export default function Author() {
 
   // ---- 删除章节（软删除：目录下线） ----
   const deleteChapter = async (c) => {
+    const ok = await confirmDialog({
+      title: '删除章节',
+      message: `确定删除《${c.title}》第 ${c.chapter_no} 章？\n删除后将从目录下线，读者无法再阅读（已订阅不退款）。`,
+      confirmText: '删除',
+      danger: true,
+    })
+    if (!ok) return
     if (editing?.id === c.id) cancelEdit()
-    if (!window.confirm(`确定删除《${c.title}》第 ${c.chapter_no} 章？删除后将从目录下线，读者无法再阅读（已订阅不退款）。`)) return
     try {
       const d = await apiDeleteChapter(c.id)
       flash(d.detail || '章节已删除')

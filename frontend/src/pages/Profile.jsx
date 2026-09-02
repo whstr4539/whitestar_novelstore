@@ -265,7 +265,10 @@ export default function Profile() {
                   {payResult.status === 'success' ? (
                     <>
                       <p className="cashier-result cashier-result-ok">支付成功</p>
-                      <p className="cashier-detail">到账 {Number(payResult.coins)} 书币，当前余额 {Number(payResult.balance_after)} 书币</p>
+                      <p className="cashier-detail">
+                        到账 {Number(payResult.coins)} 书币
+                        {payResult.balance_after != null && `，当前余额 ${Number(payResult.balance_after)} 书币`}
+                      </p>
                     </>
                   ) : payResult.status === 'failed' ? (
                     <>
