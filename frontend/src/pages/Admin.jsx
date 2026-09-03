@@ -32,7 +32,6 @@ export default function Admin() {
     <div className="container page-enter">
       <div className="page-head">
         <h1 className="page-title">管理后台</h1>
-        <span className="page-sub">平台运营控制台</span>
       </div>
 
       {msg && <div className={`alert ${msg.isErr ? 'alert-error' : 'alert-success'}`}>{msg.text}</div>}
@@ -303,6 +302,7 @@ function NovelsTab({ flash }) {
 
 /* ---------- 评论管理 ---------- */
 function CommentsTab({ flash }) {
+  const confirmDialog = useConfirm()
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [keyword, setKeyword] = useState('')

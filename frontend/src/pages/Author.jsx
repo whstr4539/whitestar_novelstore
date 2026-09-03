@@ -197,7 +197,6 @@ export default function Author() {
     <div className="container page-enter">
       <div className="page-head">
         <h1 className="page-title">写作台</h1>
-        <span className="page-sub">发布章节自动更新字数与章数 · 修改章节实时同步</span>
       </div>
 
       {msg && <div className={`alert ${msg.isErr ? 'alert-error' : 'alert-success'}`}>{msg.text}</div>}

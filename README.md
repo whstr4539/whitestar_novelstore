@@ -96,7 +96,7 @@ Swagger 文档：http://localhost:8000/docs
 ├── frontend/               # React（pages 页面 · components 组件 · api 接口封装）
 ├── res/                    # 截图素材
 ├── scripts/                # dev-backend.sh / db-backup.sh
-└── docs/                   # 课设报告（撰写中）
+└── docs/                   # 课程设计报告（星辰书城-数据库课程设计报告.md 及提交版 docx）
 ```
 
 ## 常见问题
