@@ -46,3 +46,6 @@ Thumbs.db
 # ===== æ—¥å¿— =====
 *.log
 logs/
+
+# ===== ²âÊÔÊä³ö =====
+backend/tests/last_run.txt

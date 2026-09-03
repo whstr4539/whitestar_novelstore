@@ -15,6 +15,7 @@ from app.schemas import (
     ChapterCreateIn,
     ChapterCreatedOut,
     ChapterUpdateIn,
+    IdParam,
     Message,
     NovelOut,
 )
@@ -49,8 +50,7 @@ async def author_stats(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_author),
 ):
-    """作者全景统计：作品数、总点击、章节总数、订阅收入、打赏收入（一次聚合查询）"""
-    # 作品维度：作品数 / 总点击 / 章节总数 / 总字数（chapter_count 由触发器维护的冗余列）
+    """作者全景统计：作品数、总点击、章节总数、订阅收入、打赏收入"""
     novel_count, total_views, chapter_count, word_count = (
         await db.execute(
             select(
@@ -62,7 +62,7 @@ async def author_stats(
         )
     ).one()
 
-    # 订阅收入：该书所有章节的订阅成交额
+    # 订阅收入
     chapter_revenue, purchase_count = (
         await db.execute(
             select(
@@ -102,7 +102,7 @@ async def author_stats(
 
 @router.get("/novels/{novel_id}/earnings", summary="作品收益统计（订阅/打赏收入）")
 async def novel_earnings(
-    novel_id: int,
+    novel_id: IdParam,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_author),
 ):
@@ -113,23 +113,21 @@ async def novel_earnings(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "作品不存在")
     _check_owner(novel, user)
 
-    # 订阅收入：该书所有章节的订阅成交额
+    # 订阅收入
     revenue = await db.scalar(
         select(func.coalesce(func.sum(ChapterPurchase.price_paid), 0))
         .join(Chapter, Chapter.id == ChapterPurchase.chapter_id)
         .where(Chapter.novel_id == novel_id)
     )
-    # 打赏收入：该书被打赏的书币
+    # 打赏收入
     reward_total = await db.scalar(
         select(func.coalesce(func.sum(Reward.amount), 0)).where(Reward.novel_id == novel_id)
     )
-    # 订阅笔数
     purchase_count = await db.scalar(
         select(func.count()).select_from(ChapterPurchase)
         .join(Chapter, Chapter.id == ChapterPurchase.chapter_id)
         .where(Chapter.novel_id == novel_id)
     )
-    # 打赏笔数
     reward_count = await db.scalar(
         select(func.count()).select_from(Reward).where(Reward.novel_id == novel_id)
     )
@@ -160,7 +158,7 @@ async def create_novel(
     )
     db.add(novel)
     await db.commit()
-    # 重新查询并预加载关联（避免异步懒加载报错）
+    # 重新查询并预加载关联（异步下不能懒加载）
     novel = await db.scalar(
         select(Novel)
         .options(selectinload(Novel.category), selectinload(Novel.author))
@@ -171,7 +169,7 @@ async def create_novel(
 
 @router.post("/novels/{novel_id}/chapters", response_model=ChapterCreatedOut, status_code=201, summary="发布章节（自动更新作品章数/字数）")
 async def publish_chapter(
-    novel_id: int,
+    novel_id: IdParam,
     data: ChapterCreateIn,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
@@ -182,18 +180,17 @@ async def publish_chapter(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在")
     _check_owner(novel, user)
 
-    # 价格 > 0 即为付费章节；不接受负价
+    # 付费与否只看价格，不接受负价
     if (data.price or 0) < 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "价格不能为负")
-    # 下一章序号 = 当前最大章号 + 1
     max_no = await db.scalar(
         select(func.max(Chapter.chapter_no)).where(Chapter.novel_id == novel_id)
     )
     chapter_no = (max_no or 0) + 1
 
-    word_count = len(data.content)  # 中文字符数作为字数
+    word_count = len(data.content)  # 字数按字符数计
 
-    # 章节元信息 + 正文（同一事务，正文 1:1 拆分表）
+    # 章节元信息 + 正文同事务写入（正文 1:1 拆分表）
     chapter = Chapter(
         novel_id=novel_id,
         chapter_no=chapter_no,
@@ -206,11 +203,10 @@ async def publish_chapter(
     await db.flush()  # 拿到 chapter.id
     db.add(ChapterContent(chapter_id=chapter.id, content=data.content))
 
-    # 触发器 trg_chapter_insert 会自动更新 novels.chapter_count / word_count
+    # 触发器自动维护 novels 章数/字数
     await db.commit()
     await db.refresh(novel)
 
-    # 新章节发布：失效该小说相关缓存
     await delete_keys(redis, cache_key("novel", novel_id), cache_key("novels", "hot"))
 
     return ChapterCreatedOut(
@@ -226,7 +222,7 @@ async def publish_chapter(
 
 @router.put("/chapters/{chapter_id}", response_model=Message, summary="修改章节（标题/正文/价格）")
 async def update_chapter(
-    chapter_id: int,
+    chapter_id: IdParam,
     data: ChapterUpdateIn,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
@@ -251,7 +247,7 @@ async def update_chapter(
         chapter.is_free = data.is_free
         changed = True
 
-    # 校验：价格不能为负（付费与否只看价格）
+    # 价格不能为负（付费与否只看价格）
     if float(chapter.price or 0) < 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "价格不能为负")
 
@@ -265,26 +261,25 @@ async def update_chapter(
         changed = True
 
     if changed:
-        # 重新聚合全书总字数（INSERT 触发器只覆盖发布章节场景；仅统计未删除章节）
+        # 重算全书字数（仅未删除章节）
         novel.word_count = await db.scalar(
             select(func.coalesce(func.sum(Chapter.word_count), 0)).where(
                 Chapter.novel_id == novel.id, Chapter.status == 1
             )
         )
         await db.commit()
-        # 正文/价格变化：清章节缓存
         await delete_keys(redis, cache_key("chapter", chapter_id), cache_key("novel", chapter.novel_id))
     return Message(detail="章节已更新")
 
 
 @router.delete("/chapters/{chapter_id}", response_model=Message, summary="删除章节（软删除：目录下线，保留订阅/进度历史）")
 async def delete_chapter(
-    chapter_id: int,
+    chapter_id: IdParam,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     user: User = Depends(get_current_author),
 ):
-    """软删除章节：置 status=0，从目录隐藏并在阅读接口返回不可用；保留订阅与进度历史。"""
+    """软删除章节：目录下线，保留订阅与进度历史"""
     chapter = await db.get(Chapter, chapter_id)
     if chapter is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "章节不存在")
@@ -292,11 +287,11 @@ async def delete_chapter(
     _check_owner(novel, user)
 
     if chapter.status == 0:
-        # 幂等：已删除章节再次删除视为成功
+        # 幂等：重复删除视为成功
         return Message(detail="章节已删除")
 
     chapter.status = 0
-    # 重算全书章数/字数（与触发器口径一致，仅统计未删除章节）
+    # 重算章数/字数（与触发器口径一致：仅未删除章节）
     novel.chapter_count = await db.scalar(
         select(func.count()).select_from(Chapter).where(
             Chapter.novel_id == novel.id, Chapter.status == 1
@@ -308,7 +303,6 @@ async def delete_chapter(
         )
     )
     await db.commit()
-    # 清章节/详情/列表缓存，目录立即生效
     await delete_keys(
         redis,
         cache_key("chapter", chapter_id),

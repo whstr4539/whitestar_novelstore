@@ -1,5 +1,6 @@
 """书评评分接口：一人一书一评（UPSERT），提交后重算 novels.score"""
 from fastapi import APIRouter, Depends, HTTPException, status
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +9,9 @@ from sqlalchemy.orm import selectinload
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Novel, NovelReview, User
-from app.schemas import Message, ReviewIn, ReviewOut
+from app.redis_client import get_redis
+from app.schemas import IdParam, Message, ReviewIn, ReviewOut
+from app.services.cache import cache_key, delete_keys
 
 router = APIRouter(prefix="/api/novels/{novel_id}/reviews", tags=["书评"])
 
@@ -25,7 +28,7 @@ async def _recalc_score(db, novel_id: int):
 
 
 @router.get("", response_model=list[ReviewOut], summary="评分列表")
-async def list_reviews(novel_id: int, db: AsyncSession = Depends(get_db)):
+async def list_reviews(novel_id: IdParam, db: AsyncSession = Depends(get_db)):
     if await db.get(Novel, novel_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在")
     reviews = (
@@ -41,9 +44,10 @@ async def list_reviews(novel_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=ReviewOut, status_code=201, summary="提交/更新评分（一人一书一评）")
 async def submit_review(
-    novel_id: int,
+    novel_id: IdParam,
     data: ReviewIn,
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     user: User = Depends(get_current_user),
 ):
     if await db.get(Novel, novel_id) is None:
@@ -61,9 +65,11 @@ async def submit_review(
     )
     review_id = await db.scalar(stmt)
 
-    # 重算小说均分（聚合演示）
     await _recalc_score(db, novel_id)
     await db.commit()
+
+    # 均分已回写，失效详情缓存
+    await delete_keys(redis, cache_key("novel", novel_id))
 
     review = await db.scalar(
         select(NovelReview)
@@ -75,9 +81,10 @@ async def submit_review(
 
 @router.delete("/{review_id}", response_model=Message, summary="删除评分（本人或管理员）")
 async def delete_review(
-    novel_id: int,
-    review_id: int,
+    novel_id: IdParam,
+    review_id: IdParam,
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     user: User = Depends(get_current_user),
 ):
     review = await db.get(NovelReview, review_id)
@@ -88,4 +95,5 @@ async def delete_review(
     await db.delete(review)
     await _recalc_score(db, novel_id)
     await db.commit()
+    await delete_keys(redis, cache_key("novel", novel_id))
     return Message(detail="删除成功")

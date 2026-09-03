@@ -8,7 +8,7 @@ from app.core.deps import get_current_admin
 from app.database import get_db
 from app.models import Chapter, ChapterPurchase, Novel, RechargeOrder, User
 from app.redis_client import get_redis
-from app.schemas import Message, NovelStatusIn, UserOut, UserStatusIn
+from app.schemas import IdParam, Message, NovelStatusIn, UserOut, UserStatusIn
 from app.services.cache import cache_key, delete_keys
 
 router = APIRouter(prefix="/api/admin", tags=["管理后台"])
@@ -17,8 +17,8 @@ router = APIRouter(prefix="/api/admin", tags=["管理后台"])
 @router.get("/comments", summary="评论列表（搜索/分页，仅管理员）")
 async def admin_comments(
     keyword: str | None = Query(None, description="评论内容模糊搜索"),
-    novel_id: int | None = Query(None, description="按作品筛选"),
-    page: int = Query(1, ge=1),
+    novel_id: int | None = Query(None, ge=1, le=2**63 - 1, description="按作品筛选"),
+    page: int = Query(1, ge=1, le=10_000_000),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin),
@@ -76,7 +76,7 @@ async def admin_stats(
 @router.get("/users", summary="用户列表（搜索/分页）")
 async def admin_users(
     keyword: str | None = Query(None, description="用户名/昵称模糊搜索"),
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=10_000_000),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin),
@@ -101,7 +101,7 @@ async def admin_users(
 
 @router.put("/users/{user_id}/status", response_model=Message, summary="封禁/解封用户")
 async def admin_set_user_status(
-    user_id: int,
+    user_id: IdParam,
     data: UserStatusIn,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin),
@@ -120,7 +120,7 @@ async def admin_set_user_status(
 async def admin_novels(
     status_filter: str | None = Query(None, alias="status", description="serializing/finished/banned"),
     keyword: str | None = Query(None),
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=10_000_000),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin),
@@ -151,7 +151,7 @@ async def admin_novels(
 
 @router.put("/novels/{novel_id}/status", response_model=Message, summary="下架/恢复作品")
 async def admin_set_novel_status(
-    novel_id: int,
+    novel_id: IdParam,
     data: NovelStatusIn,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
@@ -162,7 +162,7 @@ async def admin_set_novel_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "作品不存在")
     novel.status = data.status
     await db.commit()
-    # 清详情/列表缓存：下架/恢复后立即生效（缓存失效失败不影响主流程）
+    # 失效缓存使下架/恢复立即生效
     await delete_keys(redis, cache_key("novel", novel_id), cache_key("novels", "hot"))
     labels = {"serializing": "恢复连载", "finished": "标记完结", "banned": "已下架"}
     return Message(detail=labels[novel.status])

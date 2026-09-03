@@ -6,7 +6,7 @@ from app.config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,  # 开发时打印 SQL，便于课设展示
+    echo=settings.DEBUG,  # 开发期打印 SQL
     pool_size=10,
     max_overflow=20,
 )

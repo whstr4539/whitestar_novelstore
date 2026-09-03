@@ -1,11 +1,16 @@
 """Pydantic 请求/响应模型"""
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------- 通用 ----------
+# ID 限界在 bigint 范围内：超界整数传入 asyncpg 会溢出 500，此处统一拦截为 422
+IdParam = Annotated[int, Field(ge=1, le=2**63 - 1)]
+IdParamOpt = Annotated[int | None, Field(ge=1, le=2**63 - 1)]
+
+
 class Message(BaseModel):
     detail: str
 
@@ -215,8 +220,8 @@ class PayOut(BaseModel):
 # ---------- 评论 ----------
 class CommentIn(BaseModel):
     content: str = Field(min_length=1, max_length=500)
-    chapter_id: int | None = None
-    parent_id: int | None = None
+    chapter_id: IdParamOpt = None
+    parent_id: IdParamOpt = None
 
 
 class CommentOut(BaseModel):
@@ -300,7 +305,7 @@ class AuthorNovelIn(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     intro: str | None = Field(default=None, max_length=2000)
     cover_url: str | None = None
-    category_id: int | None = None
+    category_id: IdParamOpt = None
 
 
 class ChapterCreateIn(BaseModel):
@@ -359,8 +364,8 @@ class NoticeOut(BaseModel):
 
 # ---------- 阅读进度 ----------
 class ProgressIn(BaseModel):
-    novel_id: int
-    chapter_id: int
+    novel_id: IdParam
+    chapter_id: IdParam
     progress: float = Field(ge=0, le=100)
 
 

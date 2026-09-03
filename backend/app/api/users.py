@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Novel, User
-from app.schemas import UserOut, UserUpdateIn
+from app.schemas import IdParam, UserOut, UserUpdateIn
 
 router = APIRouter(prefix="/api/users", tags=["用户"])
 
@@ -42,7 +42,7 @@ async def update_me(
 
 
 @router.get("/{user_id}", summary="用户公开主页信息（作品数/收藏数/注册时间）")
-async def get_user_profile(user_id: int, db: AsyncSession = Depends(get_db)):
+async def get_user_profile(user_id: IdParam, db: AsyncSession = Depends(get_db)):
     user = await db.get(User, user_id)
     if user is None or user.status != 1:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")

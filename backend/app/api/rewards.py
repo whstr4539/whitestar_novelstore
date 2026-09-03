@@ -7,13 +7,13 @@ from sqlalchemy.orm import selectinload
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Novel, Reward, User, Wallet
-from app.schemas import RewardIn, RewardOut
+from app.schemas import IdParam, RewardIn, RewardOut
 
 router = APIRouter(prefix="/api/novels/{novel_id}/rewards", tags=["打赏"])
 
 
 @router.get("", response_model=list[RewardOut], summary="打赏记录")
-async def list_rewards(novel_id: int, db: AsyncSession = Depends(get_db)):
+async def list_rewards(novel_id: IdParam, db: AsyncSession = Depends(get_db)):
     rewards = (
         await db.scalars(
             select(Reward)
@@ -27,7 +27,7 @@ async def list_rewards(novel_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=RewardOut, status_code=201, summary="打赏（书币，事务扣费）")
 async def reward_novel(
-    novel_id: int,
+    novel_id: IdParam,
     data: RewardIn,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -38,25 +38,22 @@ async def reward_novel(
     if novel.author_id == user.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "不能打赏自己的作品")
 
-    # 1. 行锁钱包
+    # 行锁钱包
     wallet = await db.scalar(
         select(Wallet).where(Wallet.user_id == user.id).with_for_update()
     )
     if wallet is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "钱包不存在，请先充值")
 
-    # 2. 余额校验
     if float(wallet.balance) < data.amount:
         raise HTTPException(
             status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"余额不足：需 {data.amount} 书币，当前 {wallet.balance} 书币",
         )
 
-    # 3. 扣款
     new_balance = float(wallet.balance) - data.amount
     await db.execute(update(Wallet).where(Wallet.user_id == user.id).values(balance=new_balance))
 
-    # 4. 记打赏
     reward = Reward(user_id=user.id, novel_id=novel_id, amount=data.amount, message=data.message)
     db.add(reward)
     await db.commit()

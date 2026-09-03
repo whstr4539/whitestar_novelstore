@@ -14,7 +14,6 @@ from app.redis_client import redis_client
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """启动/关闭钩子：验证数据库与 Redis 连接"""
-    # 启动
     try:
         async with engine.connect() as conn:
             await conn.exec_driver_sql("SELECT 1")
@@ -27,7 +26,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] Redis 连接失败: {e}")
     yield
-    # 关闭
     await engine.dispose()
     await redis_client.aclose()
 
@@ -39,7 +37,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS：允许前端 React（开发端口 3000/5173）
+# CORS：允许开发期前端端口
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
@@ -48,7 +46,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 路由注册
 app.include_router(auth.router)
 app.include_router(novels.router)
 app.include_router(chapters.router)

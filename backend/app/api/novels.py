@@ -7,9 +7,9 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.models import Category, Novel
+from app.models import Category, Novel, User
 from app.redis_client import get_redis
-from app.schemas import ChapterMetaOut, NovelListOut, NovelOut
+from app.schemas import ChapterMetaOut, IdParam, NovelListOut, NovelOut
 from app.services.cache import cache_key, get_json, set_json
 
 router = APIRouter(prefix="/api/novels", tags=["小说"])
@@ -17,10 +17,10 @@ router = APIRouter(prefix="/api/novels", tags=["小说"])
 
 @router.get("", response_model=NovelListOut, summary="小说列表/搜索")
 async def list_novels(
-    keyword: str | None = Query(None, description="标题/简介模糊搜索"),
-    category_id: int | None = Query(None, description="分类筛选"),
+    keyword: str | None = Query(None, description="标题/作者名/简介模糊搜索"),
+    category_id: int | None = Query(None, ge=1, le=2**63 - 1, description="分类筛选"),
     sort: str = Query("hot", pattern="^(hot|new|score)$", description="hot热门 new最新 score评分"),
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=10_000_000),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
@@ -54,8 +54,15 @@ async def list_novels(
 
     if keyword:
         like = f"%{keyword}%"
-        stmt = stmt.where(or_(Novel.title.ilike(like), Novel.intro.ilike(like)))
-        count_stmt = count_stmt.where(or_(Novel.title.ilike(like), Novel.intro.ilike(like)))
+        # 作者名匹配：作者昵称命中时，其全部作品计入搜索结果
+        author_ids = select(User.id).where(User.nickname.ilike(like))
+        match = or_(
+            Novel.title.ilike(like),
+            Novel.intro.ilike(like),
+            Novel.author_id.in_(author_ids),
+        )
+        stmt = stmt.where(match)
+        count_stmt = count_stmt.where(match)
     if category_ids is not None:
         stmt = stmt.where(Novel.category_id.in_(category_ids))
         count_stmt = count_stmt.where(Novel.category_id.in_(category_ids))
@@ -80,12 +87,12 @@ async def list_novels(
 
 @router.get("/{novel_id}", response_model=NovelOut, summary="小说详情（Redis 缓存）")
 async def get_novel(
-    novel_id: int,
+    novel_id: IdParam,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ):
-    # 浏览计数：无论缓存是否命中，每次打开详情都 +1（响应返回后异步执行，不阻塞用户）
+    # 浏览计数：缓存命中与否都 +1（响应返回后异步执行）
     async def _bump_views():
         await db.execute(
             Novel.__table__.update()
@@ -110,7 +117,7 @@ async def get_novel(
     if novel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在或已下架")
 
-    # 阅读量 +1，并刷新对象，确保缓存里存的是最新值
+    # 阅读量 +1 后刷新对象，确保写入缓存的是最新值
     await db.execute(
         Novel.__table__.update().where(Novel.id == novel_id).values(total_views=Novel.total_views + 1)
     )
@@ -123,7 +130,7 @@ async def get_novel(
 
 
 @router.get("/{novel_id}/chapters", response_model=list[ChapterMetaOut], summary="章节目录")
-async def get_chapters(novel_id: int, db: AsyncSession = Depends(get_db)):
+async def get_chapters(novel_id: IdParam, db: AsyncSession = Depends(get_db)):
     from app.models import Chapter
 
     novel = await db.get(Novel, novel_id)

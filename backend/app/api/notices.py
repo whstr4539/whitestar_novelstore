@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_admin
 from app.database import get_db
 from app.models import Notice, User
-from app.schemas import Message, NoticeIn, NoticeOut
+from app.schemas import IdParam, Message, NoticeIn, NoticeOut
 
 router = APIRouter(prefix="/api/notices", tags=["公告"])
 
@@ -36,7 +36,7 @@ async def create_notice(
 
 @router.delete("/{notice_id}", response_model=Message, summary="删除公告（管理员）")
 async def delete_notice(
-    notice_id: int,
+    notice_id: IdParam,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin),
 ):

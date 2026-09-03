@@ -1,14 +1,4 @@
-"""钱包接口：余额查询 / 充值（模拟真实支付：下单 → 收银台受理 → 渠道回调 → 前端轮询）
-
-支付模型（真实第三方支付的标准形态）：
-1. POST /wallet/recharge         商户下单，创建 pending 订单（不动余额）
-2. POST /wallet/pay/{order_no}   商户把订单交给渠道 → 渠道受理，立即返回 processing
-                                 同时服务端后台任务模拟渠道 3 秒处理耗时
-3. POST /wallet/pay/notify       渠道服务器把结果 POST 到商户回调地址（notify_url）
-                                 → 验签 → 幂等 → 状态机推进 → 成功才入账 → 应答 success
-                                 （应答非 success 时渠道会重试——真实语义）
-4. GET /wallet/order/{order_no}  前端轮询订单状态直到终态
-"""
+"""钱包接口：余额 / 充值（模拟真实支付四步：下单 → 收银台受理 → 渠道回调 → 前端轮询终态）"""
 import asyncio
 import hashlib
 import hmac
@@ -29,13 +19,12 @@ from app.schemas import BillsOut, NotifyIn, OrderOut, PayIn, PayOut, RechargeIn,
 logger = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/api/wallet", tags=["钱包"])
 
-# ---- 模拟支付参数 ----
+# 模拟支付参数
 PAY_DELAY_SECONDS = 3                 # 模拟渠道处理耗时（秒）
-SUCCESS_RATE = 0.8                    # 渠道默认成功率（模拟风控）
-ORDER_TIMEOUT = timedelta(minutes=15) # 15 分钟未支付自动关单
+SUCCESS_RATE = 0.8                    # 渠道成功率（模拟风控）
+ORDER_TIMEOUT = timedelta(minutes=15) # 未支付自动关单
 MOCK_PAY_PREFIX = "https://pay.alipay-mock.com/cashier/"
-# 模拟签名密钥（真实场景为渠道分发的商户密钥，只存服务端）
-MOCK_SIGN_KEY = "mock-channel-sign-key-2024"
+MOCK_SIGN_KEY = "mock-channel-sign-key-2024"  # 真实场景为渠道分发的商户密钥
 
 
 def _gen_order_no() -> str:
@@ -67,13 +56,13 @@ async def _process_callback(order_no: str, result: str) -> None:
             select(RechargeOrder).where(RechargeOrder.order_no == order_no).with_for_update()
         )
         if order is None:
-            return  # 订单不存在
+            return
 
-        # 幂等：已终结订单直接忽略，防止重复入账
+        # 幂等：已终结订单直接忽略，防重复入账
         if order.status != "pending":
             return
 
-        # 超时关单（15 分钟未支付）
+        # 超时关单
         if order.created_at and datetime.now(timezone.utc) - order.created_at > ORDER_TIMEOUT:
             order.status = "failed"
             await db.commit()
@@ -89,7 +78,7 @@ async def _process_callback(order_no: str, result: str) -> None:
             await db.commit()
             return
 
-        # ---- 成功：订单 + 钱包同事务入账 ----
+        # 成功：订单 + 钱包同事务入账
         order.status = "success"
         order.paid_at = datetime.now(timezone.utc)
 
@@ -106,9 +95,9 @@ async def _process_callback(order_no: str, result: str) -> None:
 
 
 async def _simulate_channel(order_no: str) -> None:
-    """后台任务：扮演「第三方渠道」——等待 3 秒后携带结果回调商户 notify_url"""
+    """后台任务扮演第三方渠道：等待数秒后携带结果回调商户 notify"""
     await asyncio.sleep(PAY_DELAY_SECONDS)
-    # 渠道内部决定结果（风控/余额不足等），商户不可预知
+    # 结果由渠道内部决定（风控等），商户不可预知
     result = "success" if random.random() < SUCCESS_RATE else "fail"
     await _process_callback(order_no, result)
 
@@ -146,10 +135,7 @@ async def recharge(data: RechargeIn, db: AsyncSession = Depends(get_db),
 
 @router.post("/pay/notify", summary="模拟第三方支付渠道回调（notify_url）")
 async def pay_notify(data: NotifyIn):
-    """第三步：渠道服务器把支付结果 POST 到商户回调地址：
-    1. 验签（防伪造回调）——签名不符直接应答失败，渠道将重试
-    2. 处理回调（幂等：渠道可能多次重试，只入账一次）
-    3. 应答 {'code': 'success'}：渠道收到后停止重试"""
+    """渠道回调入口：验签防伪造 → 幂等入账 → 应答 success（非 success 渠道会重试）"""
     if not _verify_sign(data.order_no, data.result, data.sign):
         logger.warning("支付回调验签失败: order=%s result=%s", data.order_no, data.result)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "签名校验失败")
@@ -170,7 +156,7 @@ async def pay_order(order_no: str, data: PayIn, background_tasks: BackgroundTask
     if order is None or order.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "充值订单不存在")
     if order.status != "pending":
-        # 已处理：直接返回历史状态（幂等入口）
+        # 已处理：幂等返回历史状态
         return PayOut(order_no=order_no, status=order.status,
                       amount=float(order.amount), coins=float(order.coins),
                       balance_after=None)
@@ -181,13 +167,10 @@ async def pay_order(order_no: str, data: PayIn, background_tasks: BackgroundTask
         await db.commit()
         raise HTTPException(status.HTTP_410_GONE, "订单已超时关闭")
 
-    # 受理检查完成，先提交事务释放行锁再调度后台任务。
-    # 关键：FastAPI 中 BackgroundTasks 在依赖清理（get_db 的 session.close）之前执行，
-    # 若此处仍持有 FOR UPDATE 行锁，_process_callback 开新会话回调会永久等锁（死锁），
-    # 订单卡在 pending 直到前端轮询超时，且每次请求泄漏一个连接池连接。
+    # 必须先提交释放行锁再调度后台任务：BackgroundTasks 在依赖清理（session.close）
+    # 之前执行，若仍持有 FOR UPDATE 行锁，回调开新会话会永久等锁（死锁）。
     await db.commit()
 
-    # 模拟渠道异步处理：响应结束后 3 秒，后台任务回调商户 notify
     background_tasks.add_task(_simulate_channel, order_no)
 
     return PayOut(order_no=order_no, status="processing",
@@ -232,9 +215,8 @@ async def order_status(order_no: str, db: AsyncSession = Depends(get_db),
 
 @router.get("/bills", response_model=BillsOut, summary="账单流水（充值/订阅/打赏，统一格式）")
 async def my_bills(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """个人账单：三条资金流水合并为统一格式，按时间倒序。
-    入账 direction=in（充值）；出账 direction=out（订阅/打赏）。"""
-    # ① 充值（只取成功订单）
+    """个人账单：三条资金流水合并为统一格式，按时间倒序"""
+    # 充值（只取成功订单）
     rows = await db.execute(
         select(RechargeOrder)
         .where(RechargeOrder.user_id == user.id, RechargeOrder.status == "success")
@@ -252,7 +234,7 @@ async def my_bills(db: AsyncSession = Depends(get_db), user: User = Depends(get_
         for o in rows.scalars().all()
     ]
 
-    # ② 章节订阅（join 章节/作品取标题）
+    # 章节订阅
     rows = await db.execute(
         select(ChapterPurchase, Chapter.chapter_no, Chapter.title, Novel.title)
         .join(Chapter, Chapter.id == ChapterPurchase.chapter_id)
@@ -272,7 +254,7 @@ async def my_bills(db: AsyncSession = Depends(get_db), user: User = Depends(get_
         for p, no, chapter_title, novel_title in rows.all()
     ]
 
-    # ③ 打赏
+    # 打赏
     rows = await db.execute(
         select(Reward, Novel.title)
         .join(Novel, Novel.id == Reward.novel_id)
@@ -291,7 +273,6 @@ async def my_bills(db: AsyncSession = Depends(get_db), user: User = Depends(get_
         for r, novel_title in rows.all()
     ]
 
-    # 统一按时间倒序
     items.sort(key=lambda x: x["created_at"], reverse=True)
     total_in = sum(i["amount"] for i in items if i["direction"] == "in")
     total_out = sum(i["amount"] for i in items if i["direction"] == "out")

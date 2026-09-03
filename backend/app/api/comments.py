@@ -8,15 +8,15 @@ from sqlalchemy.orm import selectinload
 from app.core.deps import get_current_user, get_current_user_optional
 from app.database import get_db
 from app.models import Chapter, Comment, CommentLike, Novel, User
-from app.schemas import CommentIn, CommentLikeOut, CommentOut, Message
+from app.schemas import CommentIn, CommentLikeOut, CommentOut, IdParam, Message
 
 router = APIRouter(prefix="/api", tags=["评论"])
 
 
 @router.get("/novels/{novel_id}/comments", response_model=list[CommentOut], summary="评论列表（不传 chapter_id=书评，传了=本章说）")
 async def list_comments(
-    novel_id: int,
-    chapter_id: int | None = Query(None, description="章节 ID，空则返回书评"),
+    novel_id: IdParam,
+    chapter_id: int | None = Query(None, ge=1, le=2**63 - 1, description="章节 ID，空则返回书评"),
     db: AsyncSession = Depends(get_db),
     user: User | None = Depends(get_current_user_optional),
 ):
@@ -54,7 +54,7 @@ async def list_comments(
 
 @router.post("/novels/{novel_id}/comments", response_model=CommentOut, status_code=201, summary="发表评论（本章说/书评/回复）")
 async def create_comment(
-    novel_id: int,
+    novel_id: IdParam,
     data: CommentIn,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -63,7 +63,7 @@ async def create_comment(
     if novel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "小说不存在")
 
-    # 本章说归属校验：chapter_id 必须存在且属于该作品，避免"错位/跨书本章说"或指向不存在章节（FK 500）
+    # 本章说归属校验：章节须存在且属于该作品（防跨书错位 / 防 FK 500）
     if data.chapter_id is not None:
         chapter = await db.get(Chapter, data.chapter_id)
         if chapter is None or chapter.novel_id != novel_id:
@@ -94,7 +94,7 @@ async def create_comment(
 
 @router.get("/comments/{comment_id}/replies", response_model=list[CommentOut], summary="评论的回复列表（楼中楼）")
 async def comment_replies(
-    comment_id: int,
+    comment_id: IdParam,
     db: AsyncSession = Depends(get_db),
 ):
     """返回某条评论的直接回复（一层），按时间正序"""
@@ -113,7 +113,7 @@ async def comment_replies(
 
 @router.delete("/comments/{comment_id}", response_model=Message, summary="删除评论（本人或管理员）")
 async def delete_comment(
-    comment_id: int,
+    comment_id: IdParam,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -129,7 +129,7 @@ async def delete_comment(
 
 @router.post("/comments/{comment_id}/like", response_model=CommentLikeOut, summary="点赞/取消点赞（一人一赞，再点取消）")
 async def like_comment(
-    comment_id: int,
+    comment_id: IdParam,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
